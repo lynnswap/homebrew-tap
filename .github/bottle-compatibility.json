@@ -1,0 +1,6 @@
+{
+  "privateheaderkit": {
+    "tag": "arm64_sequoia",
+    "runners": ["macos-15", "macos-26", "xcode-27"]
+  }
+}

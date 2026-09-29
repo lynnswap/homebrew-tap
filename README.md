@@ -23,6 +23,19 @@ After the pull request checks pass, run the **brew pr-pull** workflow with the
 pull request number and reviewed head SHA. It publishes the bottles, updates
 the formula's bottle metadata, and merges the reviewed change.
 
+Tools that build with a newer SDK but also run on older macOS versions may opt
+into `.github/bottle-compatibility.json`. Each entry names the bottle tag and the
+Apple Silicon runners that must pass ordinary bottle installation and `brew test`.
+PrivateHeaderKit uses `arm64_sequoia` and is checked on macOS 15, 26, and 27.
+Other formulae keep the platform selected by `brew test-bot` unless configured.
+
+The compatibility step changes the published filenames and bottle JSON, preserving
+the archive bytes, SHA-256, recorded build environment, and provenance metadata.
+It does not rebuild or repackage the binaries on older hosts. All compatibility
+jobs must pass before running the publication workflow. This is a tap-maintainer
+compatibility declaration, not a guarantee provided by Homebrew or a requirement
+for admission to `homebrew/core`.
+
 Once a formula is published, install it with `brew install lynnswap/tap/<name>`.
 Use `brew upgrade <name>` and `brew uninstall <name>` to manage it.
 
