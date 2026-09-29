@@ -14,6 +14,10 @@ Each tool has a file under `Formula/`. Build dependencies, installation steps,
 and functional tests belong to that formula. The shared workflows check changed
 formulae and create bottles for formula pull requests.
 
+The macOS builder uses Apple Silicon macOS 26 with Xcode 26.6. Homebrew registers
+the resulting bottles for that build platform; older macOS versions are not
+distribution or CI targets of this tap.
+
 For PrivateHeaderKit, use `privateheaderkit.rb` from a published
 [PrivateHeaderKit release](https://github.com/lynnswap/PrivateHeaderKit/releases).
 Its source URL must already be available. Submit the file as a pull request to
