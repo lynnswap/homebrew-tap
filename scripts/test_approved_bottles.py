@@ -268,6 +268,35 @@ class PublishBottlesTests(unittest.TestCase):
             self.assertEqual(self.run_command(["git", "rev-parse", "HEAD"], tap), original)
             self.assertFalse((directory / "upload.txt").exists())
 
+    def test_push_recovers_unrelated_main_changes_without_rewriting_publication(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
+            published = self.run_command(["git", "rev-parse", "HEAD"], tap)
+            source = directory / "source"
+            (source / "README.md").write_text("Concurrent main update\n")
+            self.run_command(["git", "commit", "-am", "Concurrent documentation"], source)
+            self.run_command(["git", "push", "origin", "main"], source)
+            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh"))], tap)
+            self.run_command(["git", "merge-base", "--is-ancestor", published, "HEAD"], tap)
+            self.assertEqual((tap / "README.md").read_text(), "Concurrent main update\n")
+            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), "reviewed formula")
+            self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\napproved metadata")
+
+    def test_conflicting_main_update_stops_without_overwriting_remote(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
+            source = directory / "source"
+            (source / "Formula/tool.rb").write_text("Conflicting Formula\n")
+            self.run_command(["git", "commit", "-am", "Concurrent Formula"], source)
+            self.run_command(["git", "push", "origin", "main"], source)
+            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh"))], cwd=tap, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), "Conflicting Formula")
+
 
 if __name__ == "__main__":
     unittest.main()

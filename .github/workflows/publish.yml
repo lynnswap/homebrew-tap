@@ -118,4 +118,4 @@ jobs:
         with:
           subject-path: "${{ runner.temp }}/approved-bottles/*.tar.gz"
       - name: Push commits
-        run: git push origin main
+        run: bash scripts/push_bottles.sh
