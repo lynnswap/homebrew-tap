@@ -58,6 +58,7 @@ PRs created with `GITHUB_TOKEN` require a maintainer to choose **Approve workflo
 to run** before their CI starts. Review the resulting Formula change and bottle
 CI before publishing; PR creation does not authorize publication.
 
-Renovate configuration is exercised in a read-only, full dry-run workflow for
-configuration changes. Its manager and file scope are forced by trusted
+Renovate configuration is checked by its strict config validator and exercised
+in a read-only, full dry-run workflow for configuration changes. Its manager and
+file scope are forced by trusted
 configuration, and repository-supplied Renovate configuration is ignored.

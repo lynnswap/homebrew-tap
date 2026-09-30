@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 jobs:
   validate:
@@ -19,6 +20,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Reject invalid or outdated configuration
+        run: >-
+          docker run --rm --entrypoint renovate-config-validator
+          -v "$GITHUB_WORKSPACE:/workspace:ro" -w /workspace
+          ghcr.io/renovatebot/renovate:44.124.2@sha256:aa912e916788c5f594cf92f99a7bc01697bbaf4c77fce68e9dcef6c1bbd730b9
+          --strict .github/renovate-config.json
       - name: Validate without writing branches or pull requests
         uses: renovatebot/github-action@6d26fcf0275dc65624cbc3d51fe78bc773f98321 # v46.3.6
         with:
