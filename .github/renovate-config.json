@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-global-schema.json",
+  "platform": "github",
+  "repositories": ["lynnswap/homebrew-tap"],
+  "onboarding": false,
+  "requireConfig": "ignored",
+  "gitAuthor": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+  "branchPrefix": "renovate/",
+  "prConcurrentLimit": 2,
+  "prHourlyLimit": 1,
+  "dependencyDashboard": false,
+  "force": {
+    "enabledManagers": ["homebrew"],
+    "includePaths": ["Formula/privateheaderkit.rb"],
+    "automerge": false
+  }
+}
