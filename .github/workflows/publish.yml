@@ -21,10 +21,6 @@ defaults:
   run:
     shell: bash -xeuo pipefail {0}
 
-concurrency:
-  group: homebrew-bottle-publication
-  cancel-in-progress: false
-
 jobs:
   validate:
     if: github.ref == 'refs/heads/main'
@@ -32,7 +28,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: read
-      checks: read
       contents: read
       pull-requests: read
     outputs:
@@ -41,7 +36,6 @@ jobs:
       head_sha: ${{ steps.candidate.outputs.head_sha }}
       ci_run_id: ${{ steps.candidate.outputs.ci_run_id }}
       artifact_id: ${{ steps.candidate.outputs.artifact_id }}
-      artifact_name: ${{ steps.candidate.outputs.artifact_name }}
       candidate_digest: ${{ steps.candidate.outputs.candidate_digest }}
     steps:
       - name: Check out trusted approval scripts
@@ -70,14 +64,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: homebrew-publish
+    concurrency:
+      group: homebrew-bottle-publication
+      queue: max
+      cancel-in-progress: false
     permissions:
       actions: read
       attestations: write
-      checks: read
       contents: write
       id-token: write
-      issues: read
-      pull-requests: write
+      pull-requests: read
     steps:
       - name: Check out trusted approval scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,23 +104,18 @@ jobs:
       - name: Set up git
         id: git_setup
         uses: Homebrew/actions/git-user-config@1e34f2e2acaa766b7efacb8c26352e6abbb023f9 # 2026.09.13.1
-      - name: Pull only the approved tested bottles
-        id: pull_bottles
+      - name: Publish the approved local bottles
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
           HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
           HOMEBREW_GIT_COMMITTER_EMAIL: ${{ steps.git_setup.outputs.email }}
           HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
           PULL_REQUEST: ${{ needs.validate.outputs.pull_request }}
-          ARTIFACT_NAME: ${{ needs.validate.outputs.artifact_name }}
         run: |
-          brew pr-pull --debug --retain-bottle-dir --tap="$GITHUB_REPOSITORY" \
-            --head-sha="$HEAD_SHA" --artifact-pattern="$ARTIFACT_NAME" "$PULL_REQUEST"
+          bash scripts/publish_bottles.sh "$PULL_REQUEST" "$HEAD_SHA" "$RUNNER_TEMP/approved-bottles"
       - name: Generate build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: "${{ steps.pull_bottles.outputs.bottle_path }}/*.tar.gz"
+          subject-path: "${{ runner.temp }}/approved-bottles/*.tar.gz"
       - name: Push commits
-        uses: Homebrew/actions/git-try-push@1e34f2e2acaa766b7efacb8c26352e6abbb023f9 # 2026.09.13.1
-        with:
-          branch: main
+        run: git push origin main

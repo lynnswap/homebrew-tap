@@ -28,9 +28,11 @@ publication candidate and waits for the **homebrew-publish** Environment approva
 Review its PR-head SHA, successful CI run/attempt, and bottle artifact digest in
 the Actions summary, then choose **Review deployments → Approve and deploy**.
 Publication revalidates the candidate, downloads the exact tested artifact ID,
-and uses `brew pr-pull` with the reviewed head and uniquely named artifact. It
+and passes those local files directly to `brew pr-upload`. It
 publishes the bottles, updates the formula's bottle metadata, and merges that
 reviewed change.
+Only eligible publication jobs enter the shared queue, which preserves pending
+candidates instead of replacing them when another CI run completes.
 
 You can also dispatch **brew pr-pull** on `main` with the Formula PR number and
 its full reviewed head SHA. Both inputs are required. A changed head, newer or
@@ -43,10 +45,11 @@ In **Settings → Environments → homebrew-publish**, require the maintainer as
 reviewer, allow only the `main` branch, and disable administrator bypass. Leave
 **Prevent self-review** off when that maintainer also initiates publication.
 Build/test jobs and candidate validation are read-only; the short approved
-publication job alone receives Contents/Pull requests write, attestation, and
+publication job alone receives Contents write, attestation, and
 identity-token permissions. No additional token or Environment secret is needed.
 
-Publication guard tests use in-memory GitHub responses and run with:
+Publication guard tests use in-memory GitHub responses and temporary Git
+repositories with a stubbed Homebrew uploader. Run them with:
 
 ```sh
 python3 -B -m unittest discover -s scripts -p 'test_approved_bottles.py'

@@ -49,6 +49,16 @@ def formula_changes(files):
     )
 
 
+def associated_pulls(github, run):
+    if run["pull_requests"]:
+        return [item["number"] for item in run["pull_requests"]]
+    # GitHub omits pull_requests for some fork runs. Resolve their head through
+    # the base repository instead of treating an empty event field as failure.
+    return [item["number"] for item in github.pages(f"commits/{run['head_sha']}/pulls")
+            if item["state"] == "open" and not item.get("draft")
+            and item["base"]["ref"] == "main" and item["head"]["sha"] == run["head_sha"]]
+
+
 def candidate(github, number, head_sha, event_run_id=None):
     if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
         raise CandidateError("Supply the reviewed full lowercase PR-head SHA.")
@@ -76,7 +86,7 @@ def candidate(github, number, head_sha, event_run_id=None):
         raise CandidateError("The selected CI run does not test this Formula head.")
     if run["status"] != "completed" or run["conclusion"] != "success":
         raise CandidateError("The latest bottle CI run must finish successfully before publication.")
-    if number not in [item["number"] for item in run["pull_requests"]]:
+    if number not in associated_pulls(github, run):
         raise CandidateError("The CI run is not associated with the requested pull request.")
 
     name = f"bottles_macos-arm64_{run['id']}_{run['run_attempt']}"
@@ -147,11 +157,12 @@ def main():
         event_run_id = None
         if args.event_file:
             run = json.loads(args.event_file.read_text())["workflow_run"]
-            if run["event"] != "pull_request" or run["conclusion"] != "success" or len(run["pull_requests"]) != 1:
+            numbers = associated_pulls(github, run) if run["event"] == "pull_request" and run["conclusion"] == "success" else []
+            if len(numbers) != 1:
                 write_outputs(args.github_output, None)
                 print("This CI completion does not require bottle publication.")
                 return 0
-            number = run["pull_requests"][0]["number"]
+            number = numbers[0]
             head_sha = run["head_sha"]
             event_run_id = run["id"]
             pull = github.api(f"pulls/{number}")
