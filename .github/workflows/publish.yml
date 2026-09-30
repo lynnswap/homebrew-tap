@@ -105,6 +105,7 @@ jobs:
         id: git_setup
         uses: Homebrew/actions/git-user-config@1e34f2e2acaa766b7efacb8c26352e6abbb023f9 # 2026.09.13.1
       - name: Publish the approved local bottles
+        id: publish_bottles
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
           HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
@@ -118,4 +119,6 @@ jobs:
         with:
           subject-path: "${{ runner.temp }}/approved-bottles/*.tar.gz"
       - name: Push commits
-        run: bash scripts/push_bottles.sh
+        env:
+          FORMULA_PATHS: ${{ steps.publish_bottles.outputs.formula_paths }}
+        run: bash scripts/push_bottles.sh "$FORMULA_PATHS"

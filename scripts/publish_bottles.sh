@@ -4,6 +4,7 @@ set -euo pipefail
 pull_request="$1"
 head_sha="$2"
 bottle_directory="$3"
+script_directory="$(dirname "${BASH_SOURCE[0]}")"
 
 # Apply the reviewed PR to current main without rewriting either branch's
 # history. Fetching the PR ref also detects an update after approval validation.
@@ -18,6 +19,7 @@ then
   exit 1
 fi
 git merge --squash FETCH_HEAD
+python3 "${script_directory}/bottle_recipes.py" verify "${bottle_directory}"
 git commit -m "Merge Formula pull request #${pull_request}" -m "Closes #${pull_request}."
 
 # pr-upload consumes local JSON/tar files. pr-pull would download artifacts again

@@ -31,6 +31,10 @@ Publication revalidates the candidate, downloads the exact tested artifact ID,
 and passes those local files directly to `brew pr-upload`. It
 publishes the bottles, updates the formula's bottle metadata, and merges that
 reviewed change.
+Before upload, the Formula contents must match the Git revision recorded in
+Homebrew's tested bottle JSON. Concurrent changes to those published Formula
+paths require new bottle CI and approval; unrelated Formula and documentation
+changes can be merged when retrying the final push.
 Only eligible publication jobs enter the shared queue, which preserves pending
 candidates instead of replacing them when another CI run completes.
 

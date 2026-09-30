@@ -12,6 +12,8 @@ from unittest.mock import patch
 import approved_bottles as guard
 
 SHA = "a" * 40
+ORIGINAL_RECIPE = "old formula\n\n# keep\n\n# dependency: old\n"
+REVIEWED_RECIPE = ORIGINAL_RECIPE.replace("old formula", "reviewed formula")
 
 
 class FakeGitHub:
@@ -217,12 +219,12 @@ class PublishBottlesTests(unittest.TestCase):
         for key, value in [("user.name", "Fixture"), ("user.email", "fixture@example.test")]:
             self.run_command(["git", "config", key, value], source)
         (source / "Formula").mkdir()
-        (source / "Formula/tool.rb").write_text("old formula\n")
+        (source / "Formula/tool.rb").write_text(ORIGINAL_RECIPE)
         self.run_command(["git", "add", "."], source)
         self.run_command(["git", "commit", "-m", "Initial"], source)
         self.run_command(["git", "push", "origin", "main"], source)
         self.run_command(["git", "switch", "-c", "formula"], source)
-        (source / "Formula/tool.rb").write_text("reviewed formula\n")
+        (source / "Formula/tool.rb").write_text(REVIEWED_RECIPE)
         self.run_command(["git", "commit", "-am", "Update Formula"], source)
         head = self.run_command(["git", "rev-parse", "HEAD"], source)
         self.run_command(["git", "push", "origin", "HEAD:refs/pull/3/head"], source)
@@ -236,13 +238,17 @@ class PublishBottlesTests(unittest.TestCase):
             self.run_command(["git", "config", key, value], tap)
         bottles = directory / "approved-bottles"
         bottles.mkdir()
-        (bottles / "tool.bottle.json").write_text("approved metadata")
+        (bottles / "tool.bottle.json").write_text(json.dumps({"tool": {"formula": {
+            "path": "Library/Taps/lynnswap/homebrew-tap/Formula/tool.rb",
+            "tap_git_path": "Formula/tool.rb", "tap_git_revision": head}}}))
         binary = directory / "bin"
         binary.mkdir()
         brew = binary / "brew"
         brew.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$*" == "pr-upload --debug" ]]\nprintf "%s\\n" "$PWD" > "$UPLOAD_RECORD"\ncat tool.bottle.json >> "$UPLOAD_RECORD"\n')
         brew.chmod(0o755)
-        environment = dict(os.environ, PATH=f"{binary}:{os.environ['PATH']}", UPLOAD_RECORD=str(directory / "upload.txt"))
+        environment = dict(os.environ, PATH=f"{binary}:{os.environ['PATH']}",
+                           UPLOAD_RECORD=str(directory / "upload.txt"), GITHUB_REPOSITORY="lynnswap/homebrew-tap",
+                           GITHUB_OUTPUT=str(directory / "github-output.txt"))
         return tap, head, bottles, environment
 
     def test_publication_consumes_verified_local_files_and_preserves_current_main(self):
@@ -251,10 +257,11 @@ class PublishBottlesTests(unittest.TestCase):
             tap, head, bottles, environment = self.prepare_repository(directory)
             script = Path(__file__).with_name("publish_bottles.sh")
             self.run_command(["bash", str(script), "3", head, str(bottles)], tap, env=environment)
-            self.assertEqual((tap / "Formula/tool.rb").read_text(), "reviewed formula\n")
+            self.assertEqual((tap / "Formula/tool.rb").read_text(), REVIEWED_RECIPE)
             self.assertEqual((tap / "README.md").read_text(), "New main documentation\n")
             self.assertIn("Closes #3.", self.run_command(["git", "log", "-1", "--format=%B"], tap))
-            self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\napproved metadata")
+            self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\n" + (bottles / "tool.bottle.json").read_text())
+            self.assertEqual((directory / "github-output.txt").read_text(), 'formula_paths=["Formula/tool.rb"]\n')
 
     def test_changed_pr_ref_stops_before_upload_or_local_merge(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -278,11 +285,11 @@ class PublishBottlesTests(unittest.TestCase):
             (source / "README.md").write_text("Concurrent main update\n")
             self.run_command(["git", "commit", "-am", "Concurrent documentation"], source)
             self.run_command(["git", "push", "origin", "main"], source)
-            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh"))], tap)
+            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], tap)
             self.run_command(["git", "merge-base", "--is-ancestor", published, "HEAD"], tap)
             self.assertEqual((tap / "README.md").read_text(), "Concurrent main update\n")
-            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), "reviewed formula")
-            self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\napproved metadata")
+            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), REVIEWED_RECIPE.strip())
+            self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\n" + (bottles / "tool.bottle.json").read_text())
 
     def test_conflicting_main_update_stops_without_overwriting_remote(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -293,9 +300,88 @@ class PublishBottlesTests(unittest.TestCase):
             (source / "Formula/tool.rb").write_text("Conflicting Formula\n")
             self.run_command(["git", "commit", "-am", "Concurrent Formula"], source)
             self.run_command(["git", "push", "origin", "main"], source)
-            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh"))], cwd=tap, capture_output=True, text=True)
+            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], cwd=tap, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), "Conflicting Formula")
+
+    def advance_dependency(self, directory):
+        source = directory / "source"
+        path = source / "Formula/tool.rb"
+        path.write_text(path.read_text().replace("dependency: old", "dependency: new"))
+        self.run_command(["git", "commit", "-am", "Concurrent dependency"], source)
+        self.run_command(["git", "push", "origin", "main"], source)
+
+    def test_nonconflicting_recipe_change_before_upload_requires_new_ci(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.advance_dependency(directory)
+            result = subprocess.run(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)],
+                                    cwd=tap, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("differs from the CI-tested recipe", result.stderr)
+            self.assertFalse((directory / "upload.txt").exists())
+
+    def test_recipe_change_during_upload_stops_before_merging_or_pushing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
+            self.advance_dependency(directory)
+            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])],
+                                    cwd=tap, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Published Formula changed on main", result.stderr)
+            self.assertIn("Bottles were uploaded, but main was not updated", result.stderr)
+            self.assertEqual((tap / "Formula/tool.rb").read_text(), REVIEWED_RECIPE)
+            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"),
+                             ORIGINAL_RECIPE.replace("dependency: old", "dependency: new").strip())
+
+    def test_ci_tested_merge_recipe_is_accepted_without_requiring_pr_base_equality(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.advance_dependency(directory)
+            source = directory / "source"
+            self.run_command(["git", "switch", "-c", "tested-merge"], source)
+            self.run_command(["git", "merge", "--no-ff", "--no-edit", head], source)
+            tested = self.run_command(["git", "rev-parse", "HEAD"], source)
+            self.run_command(["git", "push", "origin", "HEAD:refs/pull/3/merge"], source)
+            metadata = bottles / "tool.bottle.json"
+            value = json.loads(metadata.read_text())
+            value["tool"]["formula"]["tap_git_revision"] = tested
+            metadata.write_text(json.dumps(value))
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
+            self.assertEqual((tap / "Formula/tool.rb").read_text(), REVIEWED_RECIPE.replace("dependency: old", "dependency: new"))
+            self.assertTrue((directory / "upload.txt").exists())
+
+    def test_another_formula_can_advance_main_during_upload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
+            source = directory / "source"
+            (source / "Formula/other.rb").write_text("Another reviewed tool\n")
+            self.run_command(["git", "add", "."], source)
+            self.run_command(["git", "commit", "-m", "Add another Formula"], source)
+            self.run_command(["git", "push", "origin", "main"], source)
+            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], tap)
+            self.assertEqual((tap / "Formula/other.rb").read_text(), "Another reviewed tool\n")
+            self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), REVIEWED_RECIPE.strip())
+
+    def test_native_publisher_cannot_consume_a_different_path_than_the_verified_recipe(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, head, bottles, environment = self.prepare_repository(directory)
+            metadata = bottles / "tool.bottle.json"
+            value = json.loads(metadata.read_text())
+            value["tool"]["formula"]["path"] = "Library/Taps/other/homebrew-tap/Formula/tool.rb"
+            metadata.write_text(json.dumps(value))
+            result = subprocess.run(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)],
+                                    cwd=tap, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("does not belong to this tap", result.stderr)
+            self.assertFalse((directory / "upload.txt").exists())
 
 
 if __name__ == "__main__":

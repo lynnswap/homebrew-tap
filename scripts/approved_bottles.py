@@ -41,9 +41,13 @@ class GitHub:
             page += 1
 
 
+def formula_path(path):
+    return bool(re.fullmatch(r"Formula/(?:[A-Za-z0-9_-]+/)?[A-Za-z0-9+_.@-]+\.rb", path))
+
+
 def formula_changes(files):
     return bool(files) and all(
-        re.fullmatch(r"Formula/(?:[A-Za-z0-9_-]+/)?[A-Za-z0-9+_.@-]+\.rb", item["filename"])
+        formula_path(item["filename"])
         and item["status"] in ("added", "modified")
         for item in files
     )

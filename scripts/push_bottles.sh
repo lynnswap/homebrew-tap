@@ -1,5 +1,8 @@
 #!/bin/bash
 set -euo pipefail
+script_directory="$(dirname "${BASH_SOURCE[0]}")"
+formula_paths="$1"
+trap 'echo "error: Bottles were uploaded, but main was not updated. Inspect the failure before retrying publication." >&2' ERR
 
 # Other PRs can advance main while bottles are being uploaded. Merge compatible
 # changes without rewriting the approved publication commits or uploading again.
@@ -12,6 +15,7 @@ do
   if [[ "${attempt}" != 3 ]]
   then
     git fetch origin main
+    python3 "${script_directory}/bottle_recipes.py" check-main "${formula_paths}"
     git merge --no-edit origin/main
   fi
 done
