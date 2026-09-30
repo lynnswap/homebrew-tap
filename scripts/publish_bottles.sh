@@ -11,7 +11,9 @@ git fetch origin main
 git switch main
 git merge --ff-only origin/main
 git fetch origin "refs/pull/${pull_request}/head"
-if [[ "$(git rev-parse FETCH_HEAD)" != "$head_sha" ]]; then
+fetched_head="$(git rev-parse FETCH_HEAD)"
+if [[ "${fetched_head}" != "${head_sha}" ]]
+then
   echo 'error: Formula PR head changed after approval; start a new approval.' >&2
   exit 1
 fi
@@ -20,5 +22,5 @@ git commit -m "Merge Formula pull request #${pull_request}" -m "Closes #${pull_r
 
 # pr-upload consumes local JSON/tar files. pr-pull would download artifacts again
 # by name and could substitute bytes that were never approved.
-cd "$bottle_directory"
+cd "${bottle_directory}"
 brew pr-upload --debug

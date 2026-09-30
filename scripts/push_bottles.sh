@@ -3,11 +3,14 @@ set -euo pipefail
 
 # Other PRs can advance main while bottles are being uploaded. Merge compatible
 # changes without rewriting the approved publication commits or uploading again.
-for attempt in 1 2 3; do
-  if git push origin main; then
+for attempt in 1 2 3
+do
+  if git push origin main
+  then
     exit 0
   fi
-  if [[ "$attempt" != 3 ]]; then
+  if [[ "${attempt}" != 3 ]]
+  then
     git fetch origin main
     git merge --no-edit origin/main
   fi
