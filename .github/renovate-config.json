@@ -12,10 +12,6 @@
   "force": {
     "enabledManagers": ["homebrew"],
     "includePaths": ["Formula/privateheaderkit.rb"],
-    "automerge": false,
-    "packageRules": [
-      {"matchPackageNames": ["*"], "enabled": false},
-      {"matchPackageNames": ["lynnswap/PrivateHeaderKit"], "enabled": true}
-    ]
+    "automerge": false
   }
 }
