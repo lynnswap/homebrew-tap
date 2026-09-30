@@ -1,0 +1,33 @@
+name: Propose Homebrew updates
+
+on:
+  schedule:
+    - cron: "17 23 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: renovate-formula-updates
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted bot configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Propose PrivateHeaderKit Formula updates
+        uses: renovatebot/github-action@6d26fcf0275dc65624cbc3d51fe78bc773f98321 # v46.3.6
+        with:
+          configurationFile: .github/renovate-config.json
+          token: ${{ github.token }}
+          renovate-image: ghcr.io/renovatebot/renovate:44.124.2@sha256:aa912e916788c5f594cf92f99a7bc01697bbaf4c77fce68e9dcef6c1bbd730b9

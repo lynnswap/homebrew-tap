@@ -36,3 +36,28 @@ and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Automated maintenance
+
+Dependabot proposes weekly updates to pinned workflow actions. The
+**Propose Homebrew updates** workflow runs Renovate daily at 08:17 Japan time,
+with a manual dispatch available on `main`. It uses this repository's
+`GITHUB_TOKEN`, proposes updates only for `Formula/privateheaderkit.rb`, and
+never merges a PR. Its action and container image are pinned to immutable
+identities; review both pins when updating Renovate.
+
+The first Formula must be added from the first published PrivateHeaderKit source
+release before Renovate can maintain it. Renovate updates the source URL and
+SHA-256; changes to installation, dependencies, or tests must still be reviewed
+and synchronized from the source release's Formula.
+
+In **Settings → Actions → General**, keep workflow permissions read-only by
+default and enable **Allow GitHub Actions to create and approve pull requests**.
+Only the updater job requests Contents and Pull requests write permissions.
+PRs created with `GITHUB_TOKEN` require a maintainer to choose **Approve workflows
+to run** before their CI starts. Review the resulting Formula change and bottle
+CI before publishing; PR creation does not authorize publication.
+
+Renovate configuration is exercised in a read-only, full dry-run workflow for
+configuration changes. Its manager and file scope are forced by trusted
+configuration, and repository-supplied Renovate configuration is ignored.
