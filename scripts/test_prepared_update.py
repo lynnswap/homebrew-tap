@@ -100,8 +100,21 @@ class PreparedUpdateTests(unittest.TestCase):
     def test_binary_published_formula_is_still_reported_as_an_error(self):
         tap = FakeGitHub()
         tap.formula = dict(content=base64.b64encode(b"\xff").decode())
-        with self.assertRaises(UnicodeError):
+        with self.assertRaises(discovery.CandidateError):
             discovery.candidate(tap, FakeGitHub())
+
+    def test_non_file_proposals_are_not_source_updates(self):
+        pull = dict(number=18, head=dict(sha="a" * 40, repo=dict(full_name="lynnswap/homebrew-tap")))
+        entries = [dict(type="symlink", target="missing.rb"), dict(type="submodule"), [], dict(content=None)]
+        for entry in entries:
+            proposed = FakeGitHub()
+            proposed.formula = entry
+            with patch.object(discovery, "GitHub", return_value=proposed):
+                self.assertTrue(discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub())["update"])
+            tap = FakeGitHub()
+            tap.formula = entry
+            with self.assertRaises(discovery.CandidateError):
+                discovery.candidate(tap, FakeGitHub())
 
     def test_unrelated_pr_does_not_read_or_evaluate_its_formula(self):
         pull = dict(number=7)
@@ -111,8 +124,7 @@ class PreparedUpdateTests(unittest.TestCase):
         self.assertTrue(discovery.candidate(tap, FakeGitHub())["update"])
 
     def test_invalid_formula_and_api_failures_are_not_reported_as_no_update(self):
-        with self.assertRaises(discovery.CandidateError):
-            discovery.source_tag(formula("v0.7.1-beta.1"))
+        self.assertIsNone(discovery.source_tag(formula("v0.7.1-beta.1")))
         tap = FakeGitHub()
         with patch.object(tap, "api", side_effect=discovery.CandidateError("Forbidden")):
             with self.assertRaisesRegex(discovery.CandidateError, "Forbidden"):

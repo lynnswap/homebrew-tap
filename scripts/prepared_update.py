@@ -21,18 +21,23 @@ def stable_version(tag):
 
 
 def source_tag(entry):
-    formula = base64.b64decode(entry["content"]).decode("utf-8")
+    if not isinstance(entry, dict) or not isinstance(entry.get("content"), str):
+        return None
+    try:
+        formula = base64.b64decode(entry["content"]).decode("utf-8")
+    except (ValueError, UnicodeError):
+        return None
     urls = re.findall(r'''^  url ["']([^"'\n]+)["'](?:\s+#.*)?$''', formula, re.MULTILINE)
     if len(urls) != 1 or not urls[0].startswith(SOURCE_PREFIX) or not urls[0].endswith(".tar.gz"):
-        raise CandidateError("PrivateHeaderKit discovery requires a literal public tag-archive URL.")
+        return None
     tag = urls[0][len(SOURCE_PREFIX):-len(".tar.gz")]
-    if stable_version(tag) is None:
-        raise CandidateError("The maintained Formula must name a stable source tag.")
-    return tag
+    return tag if stable_version(tag) is not None else None
 
 
 def candidate(tap, source):
     current = source_tag(tap.api(f"contents/{FORMULA}?ref=main"))
+    if current is None:
+        raise CandidateError("The published Formula must name a literal public stable tag-archive URL.")
     # Matching references returns the full namespace without paging parameters.
     tags = [item["ref"].removeprefix("refs/tags/")
             for item in source.api("git/matching-refs/tags/v")]
@@ -49,11 +54,7 @@ def candidate(tap, source):
         if head["repo"] is None:
             continue
         proposed = GitHub(head["repo"]["full_name"]).api(f"contents/{FORMULA}?ref={head['sha']}")
-        try:
-            proposed_tag = source_tag(proposed)
-        except (CandidateError, ValueError, UnicodeError):
-            continue
-        if proposed_tag == latest:
+        if source_tag(proposed) == latest:
             return dict(value, pull_request=pull["number"], reason="The source update already has an open Formula PR.")
     return dict(value, update=True, reason="A public stable source tag needs a Formula proposal.")
 
