@@ -65,6 +65,18 @@ class PreparedUpdateTests(unittest.TestCase):
             value = discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub(tags=["v0.7.2"]))
         self.assertTrue(value["update"])
 
+    def test_unrelated_source_recipe_does_not_block_discovery(self):
+        pull = dict(number=18, head=dict(sha="a" * 40, repo=dict(full_name="lynnswap/homebrew-tap")))
+        proposed = FakeGitHub()
+        proposed.formula = dict(content=base64.b64encode(
+            f'  url "{discovery.SOURCE_PREFIX}v0.7.0.zip"\n'.encode()).decode())
+        with patch.object(discovery, "GitHub", return_value=proposed):
+            self.assertTrue(discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub())["update"])
+
+    def test_deleted_proposal_repository_does_not_block_discovery(self):
+        pull = dict(number=18, head=dict(sha="a" * 40, repo=None))
+        self.assertTrue(discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub())["update"])
+
     def test_unrelated_pr_does_not_read_or_evaluate_its_formula(self):
         pull = dict(number=7)
         tap = FakeGitHub(pulls=[pull])

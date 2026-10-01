@@ -44,8 +44,14 @@ def candidate(tap, source):
         if not any(item["filename"] == FORMULA for item in tap.pages(f"pulls/{pull['number']}/files")):
             continue
         head = pull["head"]
+        if head["repo"] is None:
+            continue
         proposed = GitHub(head["repo"]["full_name"]).api(f"contents/{FORMULA}?ref={head['sha']}")
-        if source_tag(proposed) == latest:
+        try:
+            proposed_tag = source_tag(proposed)
+        except CandidateError:
+            continue
+        if proposed_tag == latest:
             return dict(value, pull_request=pull["number"], reason="The source update already has an open Formula PR.")
     return dict(value, update=True, reason="A public stable source tag needs a Formula proposal.")
 
