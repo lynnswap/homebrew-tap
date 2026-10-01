@@ -1,9 +1,21 @@
 name: brew test-bot
 
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Bottle CI for PR {0} at {1}', inputs.pull_request, inputs.head_sha) || github.event.pull_request.title || github.event.head_commit.message }}
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Native Formula PR number
+        required: true
+        type: string
+      head_sha:
+        description: Pinned full native PR head SHA
+        required: true
+        type: string
 
 permissions: {}
 
@@ -24,6 +36,7 @@ jobs:
       - run: python3 -B -m unittest discover -s scripts -p 'test_*.py'
 
   test-bot:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: macos-26
     timeout-minutes: 60
     env:
@@ -47,16 +60,48 @@ jobs:
           key: macos-arm64-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
           restore-keys: macos-arm64-rubygems-
 
+      - name: Pin the native Formula checkout
+        id: pinned
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ inputs.pull_request }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          tap_root="$(brew --repository lynnswap/tap)"
+          git -C "$tap_root" fetch origin "$WORKFLOW_SHA"
+          mkdir -p "$RUNNER_TEMP/trusted-ci"
+          for script in dispatched_ci.py approved_bottles.py; do
+            git -C "$tap_root" show "$WORKFLOW_SHA:scripts/$script" > "$RUNNER_TEMP/trusted-ci/$script"
+          done
+          python3 "$RUNNER_TEMP/trusted-ci/dispatched_ci.py" prepare --repo "$GITHUB_REPOSITORY" \
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --tap-root "$tap_root" \
+            --github-output "$GITHUB_OUTPUT"
+
       - run: brew test-bot --only-cleanup-before
+
+      - name: Restore the pinned head after cleanup
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: git -C "$(brew --repository lynnswap/tap)" checkout --detach "$HEAD_SHA"
 
       - run: brew test-bot --only-setup
 
       - run: brew test-bot --only-tap-syntax
       - run: brew test-bot --only-formulae
         if: github.event_name == 'pull_request'
+      - name: Build and test the pinned native Formulae
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          FORMULAE: ${{ steps.pinned.outputs.formulae }}
+          ADDED_FORMULAE: ${{ steps.pinned.outputs.added_formulae }}
+        run: |
+          brew test-bot --only-formulae --testing-formulae="$FORMULAE" --added-formulae="$ADDED_FORMULAE"
 
       - name: Upload bottles as artifact
-        if: always() && github.event_name == 'pull_request'
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bottles_macos-arm64_${{ github.run_id }}_${{ github.run_attempt }}
