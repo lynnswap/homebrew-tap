@@ -262,6 +262,9 @@ class PublishBottlesTests(unittest.TestCase):
             self.assertIn("Closes #3.", self.run_command(["git", "log", "-1", "--format=%B"], tap))
             self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\n" + (bottles / "tool.bottle.json").read_text())
             self.assertEqual((directory / "github-output.txt").read_text(), 'formula_paths=["Formula/tool.rb"]\n')
+            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")),
+                              json.dumps(["Formula/tool.rb"])], tap)
+            self.run_command(["git", "merge-base", "--is-ancestor", head, "main"], directory / "remote.git")
 
     def test_changed_pr_ref_stops_before_upload_or_local_merge(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -287,6 +290,7 @@ class PublishBottlesTests(unittest.TestCase):
             self.run_command(["git", "push", "origin", "main"], source)
             self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], tap)
             self.run_command(["git", "merge-base", "--is-ancestor", published, "HEAD"], tap)
+            self.run_command(["git", "merge-base", "--is-ancestor", head, "main"], directory / "remote.git")
             self.assertEqual((tap / "README.md").read_text(), "Concurrent main update\n")
             self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), REVIEWED_RECIPE.strip())
             self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\n" + (bottles / "tool.bottle.json").read_text())

@@ -18,7 +18,7 @@ then
   echo 'error: Formula PR head changed after approval; start a new approval.' >&2
   exit 1
 fi
-git merge --squash FETCH_HEAD
+git merge --no-commit --no-ff FETCH_HEAD
 python3 "${script_directory}/bottle_recipes.py" verify "${bottle_directory}"
 git commit -m "Merge Formula pull request #${pull_request}" -m "Closes #${pull_request}."
 
