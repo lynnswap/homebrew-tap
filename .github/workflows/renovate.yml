@@ -63,3 +63,24 @@ jobs:
           configurationFile: .github/renovate-config.json
           token: ${{ github.token }}
           renovate-image: ghcr.io/renovatebot/renovate:44.124.2@sha256:aa912e916788c5f594cf92f99a7bc01697bbaf4c77fce68e9dcef6c1bbd730b9
+
+  dispatch-ci:
+    needs: [candidate, renovate]
+    if: >-
+      always() && needs.candidate.result == 'success' &&
+      (needs.renovate.result == 'success' || needs.renovate.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Start read-only CI for pinned native proposals
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/dispatched_ci.py dispatch --repo "$GITHUB_REPOSITORY"

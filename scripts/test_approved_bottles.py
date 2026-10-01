@@ -24,6 +24,7 @@ class FakeGitHub:
         self.pull = {"state": "open", "draft": False, "base": {"ref": "main"}, "head": {"sha": SHA}}
         self.files = [{"filename": "Formula/privateheaderkit.rb", "status": "modified"}]
         self.run = {"id": 100, "run_attempt": 1, "workflow_id": 40, "head_sha": SHA,
+                    "created_at": "2026-10-01T00:00:00Z",
                     "event": "pull_request", "status": "completed", "conclusion": "success",
                     "pull_requests": [{"number": 3}]}
         self.runs = [self.run]
@@ -48,6 +49,8 @@ class FakeGitHub:
         self.calls.append(path)
         if path == "pulls/3/files":
             return copy.deepcopy(self.files)
+        if path == "actions/workflows/40/runs?event=workflow_dispatch" and field == "workflow_runs":
+            return [copy.deepcopy(item) for item in self.runs if item["event"] == "workflow_dispatch"]
         if path == "actions/runs/100/artifacts" and field == "artifacts":
             return copy.deepcopy(self.artifacts)
         if path == f"commits/{SHA}/pulls":
@@ -56,6 +59,19 @@ class FakeGitHub:
 
 
 class ApprovedBottlesTests(unittest.TestCase):
+    def test_trusted_dispatch_binds_server_inputs_instead_of_mutable_pr_metadata(self):
+        github = FakeGitHub()
+        github.run.update(event="workflow_dispatch", head_sha="b" * 40, head_branch="main",
+                          display_title=f"Bottle CI for PR 3 at {SHA}", pull_requests=[])
+        self.assertEqual(guard.candidate(github, 3, SHA)["head_sha"], SHA)
+        for field, value in (("display_title", f"Bottle CI for PR 3 at {'b' * 40}"),
+                             ("head_branch", "untrusted"), ("workflow_id", 99)):
+            with self.subTest(field=field):
+                bad = copy.deepcopy(github)
+                bad.run[field] = value
+                with self.assertRaises(guard.CandidateError):
+                    guard.candidate(bad, 3, SHA)
+
     def test_candidate_pins_reviewed_head_and_exact_tested_artifact(self):
         github = FakeGitHub()
         value = guard.candidate(github, 3, SHA)
@@ -170,6 +186,20 @@ class ApprovedBottlesTests(unittest.TestCase):
             self.assertIn("eligible=true\n", output.read_text())
             self.assertIn("pull_request=3\n", output.read_text())
 
+    def test_dispatched_completion_uses_the_pinned_pr_head_instead_of_main_sha(self):
+        github = FakeGitHub()
+        github.run.update(event="workflow_dispatch", head_sha="b" * 40, head_branch="main",
+                          display_title=f"Bottle CI for PR 3 at {SHA}", pull_requests=[])
+        with tempfile.TemporaryDirectory() as directory:
+            event = Path(directory) / "event.json"
+            output = Path(directory) / "output.txt"
+            event.write_text(json.dumps({"workflow_run": github.run}))
+            args = ["guard", "--repo", github.repository, "--event-file", str(event), "--github-output", str(output)]
+            with patch("sys.argv", args), patch.object(guard, "GitHub", return_value=github), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(guard.main(), 0)
+            self.assertIn("eligible=true\n", output.read_text())
+            self.assertIn(f"head_sha={SHA}\n", output.read_text())
+
     def test_non_formula_completion_skips_publication_and_outputs(self):
         github = FakeGitHub()
         github.files = [{"filename": "README.md", "status": "modified"}]
@@ -205,6 +235,14 @@ class ApprovedBottlesTests(unittest.TestCase):
             run.return_value.stderr = "permission denied"
             with self.assertRaisesRegex(guard.CandidateError, "permission denied"):
                 guard.GitHub("owner/tap").api("actions/artifacts/7")
+
+    def test_job_logs_use_only_options_advertised_by_the_installed_cli(self):
+        for help_text, expected in (("gh api options", []), ("--allow-escape-sequences", ["--allow-escape-sequences"])):
+            help_result = subprocess.CompletedProcess([], 0, stdout=help_text, stderr="")
+            log_result = subprocess.CompletedProcess([], 0, stdout="timestamp {\"pull_request\": 3}", stderr="")
+            with patch.object(guard.subprocess, "run", side_effect=[help_result, log_result]) as run:
+                self.assertEqual(guard.GitHub("owner/tap").job_log(7), log_result.stdout)
+                self.assertEqual(run.call_args.args[0], ["gh", "api", *expected, "repos/owner/tap/actions/jobs/7/logs"])
 
 
 class PublishBottlesTests(unittest.TestCase):

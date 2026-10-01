@@ -24,6 +24,9 @@ After Formula PR checks pass, **brew pr-pull** prepares a publication candidate
 and waits for the **homebrew-publish** Environment approval. Review the PR head
 SHA, successful CI run/attempt and bottle artifact digest in the Actions summary,
 then choose **Review deployments → Approve and deploy**.
+GitHub sends a deployment-review request to the required reviewer. Enable
+deployment-review push notifications in GitHub Mobile to receive this approval
+request on a phone.
 
 The publisher revalidates that candidate, downloads the exact tested artifact and
 checks the Formula against Homebrew's tested recipe before uploading bottles and
@@ -58,8 +61,9 @@ Dependabot proposes weekly updates to workflow actions. **Propose Homebrew
 updates** runs Renovate daily at 08:17 Japan time or on manual dispatch from
 `main`. A short read-only check also runs every 15 minutes: a newer public stable
 PrivateHeaderKit tag starts Renovate unless an open Formula PR already proposes
-it. Existing proposals wait for review and approvals without repeatedly starting
-the update writer. Source tags can therefore initiate tap builds before core
+it. Existing proposals do not repeatedly start the update writer. After discovery
+or maintenance, a separate trusted job starts read-only bottle CI for native
+Formula proposals that do not already have CI. Source tags initiate tap builds before core
 stable publication; the daily/manual runs still perform regular maintenance.
 Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
 replace a pending manual or daily maintenance request.
@@ -71,9 +75,18 @@ automatically enable Renovate for it; review the scope in
 
 In **Settings → Actions → General**, keep workflow permissions read-only by
 default and enable **Allow GitHub Actions to create and approve pull requests**.
-Renovate uses this repository's `GITHUB_TOKEN`; PRs it creates require a maintainer
-to choose **Approve workflows to run** before CI starts. Review the Formula and
-bottle CI before approving publication.
+Renovate uses this repository's `GITHUB_TOKEN`. Its native Formula PRs run CI
+through an automatic `workflow_dispatch` on `main`, with their PR number and full
+head SHA pinned in the server-rendered run title. This does not require a separate
+**Approve workflows to run** action. The read-only builder validates the native
+proposal, checks out that exact head and tests the named Formulae. Publication
+accepts only successful CI from the canonical workflow bound to that same PR head
+and immutable bottle artifact. Review the Formula and bottle CI when the
+`homebrew-publish` approval request arrives; the protected publisher uploads the
+tested bottles and merges the PR automatically after approval.
+Discovery also starts a missing publisher for successful CI, including a bot PR
+approved before this automatic dispatch flow was installed. Existing publication
+runs and actual CI/publication failures are not repeatedly retried.
 
 Keep workflow actions and the Renovate image pinned to immutable identities.
 Configuration changes run strict validation and a read-only full dry run; trusted

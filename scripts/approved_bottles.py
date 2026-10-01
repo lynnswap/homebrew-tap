@@ -19,14 +19,17 @@ class GitHub:
     def __init__(self, repository):
         self.repository = repository
 
-    def api(self, path):
+    def api(self, path, method="GET", data=None):
+        command = ["gh", "api", "--method", method, f"repos/{self.repository}/{path}"]
+        if data is not None:
+            command += ["--input", "-"]
         result = subprocess.run(
-            ["gh", "api", "--method", "GET", f"repos/{self.repository}/{path}"],
+            command, input=json.dumps(data) if data is not None else None,
             capture_output=True, text=True, check=False,
         )
         if result.returncode:
             raise CandidateError(result.stderr.strip() or f"Could not read {path}.")
-        return json.loads(result.stdout)
+        return json.loads(result.stdout) if result.stdout.strip() else None
 
     def pages(self, path, field=None):
         values = []
@@ -39,6 +42,24 @@ class GitHub:
             if len(items) < 100:
                 return values
             page += 1
+
+    def job_log(self, job_id):
+        # Runner images can ship an older gh; newer versions require this opt-in
+        # for raw job logs containing GitHub's ANSI-colored command output.
+        help_result = subprocess.run(["gh", "api", "--help"], capture_output=True, text=True, check=False)
+        if help_result.returncode:
+            raise CandidateError(help_result.stderr.strip() or "Could not inspect gh api options.")
+        command = ["gh", "api"]
+        if "--allow-escape-sequences" in help_result.stdout:
+            command.append("--allow-escape-sequences")
+        command.append(f"repos/{self.repository}/actions/jobs/{job_id}/logs")
+        result = subprocess.run(
+            command,
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise CandidateError(result.stderr.strip() or "Could not read the publication validation log.")
+        return result.stdout
 
 
 def formula_path(path):
@@ -54,6 +75,9 @@ def formula_changes(files):
 
 
 def associated_pulls(github, run):
+    dispatched = dispatched_pull(run)
+    if dispatched:
+        return [dispatched[0]]
     if run["pull_requests"]:
         return [item["number"] for item in run["pull_requests"]]
     # GitHub omits pull_requests for some fork runs. Resolve their head through
@@ -61,6 +85,25 @@ def associated_pulls(github, run):
     return [item["number"] for item in github.pages(f"commits/{run['head_sha']}/pulls")
             if item["state"] == "open" and not item.get("draft")
             and item["base"]["ref"] == "main" and item["head"]["sha"] == run["head_sha"]]
+
+
+def dispatched_pull(run):
+    if run["event"] != "workflow_dispatch" or run.get("head_branch") != "main":
+        return None
+    match = re.fullmatch(r"Bottle CI for PR ([0-9]+) at ([0-9a-f]{40})", run.get("display_title", ""))
+    return (int(match[1]), match[2]) if match else None
+
+
+def matching_runs(github, workflow_id, number, head_sha):
+    pulls = github.api(
+        f"actions/workflows/{workflow_id}/runs?event=pull_request&head_sha={head_sha}&per_page=100"
+    )["workflow_runs"]
+    dispatches = github.pages(f"actions/workflows/{workflow_id}/runs?event=workflow_dispatch", "workflow_runs")
+    runs = {run["id"]: run for run in pulls + dispatches
+            if run["workflow_id"] == workflow_id and (
+                (run["event"] == "pull_request" and run["head_sha"] == head_sha)
+                or dispatched_pull(run) == (number, head_sha))}
+    return sorted(runs.values(), key=lambda run: (run["created_at"], run["id"]), reverse=True)
 
 
 def candidate(github, number, head_sha, event_run_id=None):
@@ -77,16 +120,17 @@ def candidate(github, number, head_sha, event_run_id=None):
         raise CandidateError("Bottle publication accepts only added or modified Formula files.")
 
     workflow = github.api("actions/workflows/tests.yml")
-    runs = github.api(
-        f"actions/workflows/{workflow['id']}/runs?event=pull_request&head_sha={head_sha}&per_page=100"
-    )["workflow_runs"]
+    runs = matching_runs(github, workflow["id"], number, head_sha)
     if not runs:
         raise CandidateError("No bottle CI run exists for the reviewed head.")
     latest = runs[0]
     if event_run_id is not None and latest["id"] != event_run_id:
         raise CandidateError("A newer bottle CI run replaced this completion event.")
     run = github.api(f"actions/runs/{latest['id']}")
-    if run["workflow_id"] != workflow["id"] or run["head_sha"] != head_sha or run["event"] != "pull_request":
+    if run["workflow_id"] != workflow["id"] or not (
+        (run["event"] == "pull_request" and run["head_sha"] == head_sha)
+        or dispatched_pull(run) == (number, head_sha)
+    ):
         raise CandidateError("The selected CI run does not test this Formula head.")
     if run["status"] != "completed" or run["conclusion"] != "success":
         raise CandidateError("The latest bottle CI run must finish successfully before publication.")
@@ -161,13 +205,14 @@ def main():
         event_run_id = None
         if args.event_file:
             run = json.loads(args.event_file.read_text())["workflow_run"]
-            numbers = associated_pulls(github, run) if run["event"] == "pull_request" and run["conclusion"] == "success" else []
+            numbers = associated_pulls(github, run) if run["event"] in ("pull_request", "workflow_dispatch") and run["conclusion"] == "success" else []
             if len(numbers) != 1:
                 write_outputs(args.github_output, None)
                 print("This CI completion does not require bottle publication.")
                 return 0
             number = numbers[0]
-            head_sha = run["head_sha"]
+            dispatched = dispatched_pull(run)
+            head_sha = dispatched[1] if dispatched else run["head_sha"]
             event_run_id = run["id"]
             pull = github.api(f"pulls/{number}")
             if pull["state"] != "open" or pull.get("draft") or pull["head"]["sha"] != head_sha:

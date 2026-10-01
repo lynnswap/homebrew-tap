@@ -1,5 +1,7 @@
 name: brew pr-pull
 
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Publish bottles for PR {0} at {1}', inputs.pull_request, inputs.head_sha) || format('Publish bottles from CI {0} attempt {1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) }}
+
 on:
   workflow_dispatch:
     inputs:
