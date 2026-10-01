@@ -27,9 +27,11 @@ then choose **Review deployments → Approve and deploy**.
 The publisher revalidates that candidate, downloads the exact tested artifact and
 checks the Formula against Homebrew's tested recipe before uploading bottles and
 updating `main`. The publication merge preserves the reviewed PR head in `main`
-history so GitHub marks the PR as merged. Concurrent changes to the same Formula require new bottle CI and
-approval; unrelated Formula or documentation changes can be preserved during push
-recovery. Documentation-only PRs do not publish bottles.
+history so GitHub marks the PR as merged. Each push checks changes from the main
+commit recorded before that merge and binds the push to the checked remote tip.
+Concurrent changes to the same Formula require new bottle CI and approval;
+unrelated Formula or documentation changes can be preserved during push recovery.
+Documentation-only PRs do not publish bottles.
 
 To retry, dispatch **brew pr-pull** on `main` with the Formula PR number and its
 full reviewed head SHA. A changed head, newer or failed CI, replaced artifact or

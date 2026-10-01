@@ -43,13 +43,17 @@ def verify_recipes(directory):
     return sorted(paths)
 
 
-def check_main(paths):
+def merge_main(paths, base):
     if not paths or not all(formula_path(path) for path in paths):
         raise CandidateError("Supply the Formula paths verified before bottle upload.")
-    base = git("merge-base", "HEAD", "origin/main").stdout.strip()
-    changed = git("diff", "--name-only", base, "origin/main", "--", *paths).stdout.strip()
-    if changed:
-        raise CandidateError(f"Published Formula changed on main: {changed}. Rebuild and approve new bottles.")
+    changed = git("diff", "--name-only", "-z", base, "origin/main").stdout.split("\0")[:-1]
+    formula_changes = sorted(set(changed).intersection(paths))
+    if formula_changes:
+        raise CandidateError(f"Published Formula changed on main: {', '.join(formula_changes)}. Rebuild and approve new bottles.")
+    git("merge", "--no-edit", "origin/main")
+    unrelated = [path for path in changed if path not in paths]
+    if unrelated and git("diff", "--name-only", "origin/main", "HEAD", "--", *unrelated).stdout.strip():
+        raise CandidateError("Concurrent main changes were not preserved; inspect the PR ancestry before retrying.")
 
 
 def main():
@@ -57,8 +61,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify")
     verify.add_argument("directory", type=Path)
-    check = commands.add_parser("check-main")
+    check = commands.add_parser("merge-main")
     check.add_argument("paths", help="JSON Formula paths emitted before upload")
+    check.add_argument("base", help="Main commit recorded before the publication merge")
     args = parser.parse_args()
     try:
         if args.command == "verify":
@@ -67,7 +72,7 @@ def main():
                 with Path(output).open("a") as file:
                     file.write(f"formula_paths={json.dumps(paths)}\n")
         else:
-            check_main(json.loads(args.paths))
+            merge_main(json.loads(args.paths), args.base)
         return 0
     except (CandidateError, KeyError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

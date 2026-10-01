@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -251,6 +252,11 @@ class PublishBottlesTests(unittest.TestCase):
                            GITHUB_OUTPUT=str(directory / "github-output.txt"))
         return tap, head, bottles, environment
 
+    def push_command(self, environment):
+        outputs = dict(line.split("=", 1) for line in Path(environment["GITHUB_OUTPUT"]).read_text().splitlines())
+        return ["bash", str(Path(__file__).with_name("push_bottles.sh")),
+                outputs["formula_paths"], outputs["publication_base_sha"]]
+
     def test_publication_consumes_verified_local_files_and_preserves_current_main(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -261,9 +267,10 @@ class PublishBottlesTests(unittest.TestCase):
             self.assertEqual((tap / "README.md").read_text(), "New main documentation\n")
             self.assertIn("Closes #3.", self.run_command(["git", "log", "-1", "--format=%B"], tap))
             self.assertEqual((directory / "upload.txt").read_text(), f"{bottles}\n" + (bottles / "tool.bottle.json").read_text())
-            self.assertEqual((directory / "github-output.txt").read_text(), 'formula_paths=["Formula/tool.rb"]\n')
-            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")),
-                              json.dumps(["Formula/tool.rb"])], tap)
+            outputs = dict(line.split("=", 1) for line in (directory / "github-output.txt").read_text().splitlines())
+            self.assertEqual(outputs["formula_paths"], '["Formula/tool.rb"]')
+            self.assertEqual(outputs["publication_base_sha"], self.run_command(["git", "rev-parse", "HEAD^1"], tap))
+            self.run_command(self.push_command(environment), tap)
             self.run_command(["git", "merge-base", "--is-ancestor", head, "main"], directory / "remote.git")
 
     def test_changed_pr_ref_stops_before_upload_or_local_merge(self):
@@ -288,7 +295,7 @@ class PublishBottlesTests(unittest.TestCase):
             (source / "README.md").write_text("Concurrent main update\n")
             self.run_command(["git", "commit", "-am", "Concurrent documentation"], source)
             self.run_command(["git", "push", "origin", "main"], source)
-            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], tap)
+            self.run_command(self.push_command(environment), tap)
             self.run_command(["git", "merge-base", "--is-ancestor", published, "HEAD"], tap)
             self.run_command(["git", "merge-base", "--is-ancestor", head, "main"], directory / "remote.git")
             self.assertEqual((tap / "README.md").read_text(), "Concurrent main update\n")
@@ -304,7 +311,7 @@ class PublishBottlesTests(unittest.TestCase):
             (source / "Formula/tool.rb").write_text("Conflicting Formula\n")
             self.run_command(["git", "commit", "-am", "Concurrent Formula"], source)
             self.run_command(["git", "push", "origin", "main"], source)
-            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], cwd=tap, capture_output=True, text=True)
+            result = subprocess.run(self.push_command(environment), cwd=tap, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), "Conflicting Formula")
 
@@ -314,6 +321,83 @@ class PublishBottlesTests(unittest.TestCase):
         path.write_text(path.read_text().replace("dependency: old", "dependency: new"))
         self.run_command(["git", "commit", "-am", "Concurrent dependency"], source)
         self.run_command(["git", "push", "origin", "main"], source)
+
+    def prepare_ancestor_update(self, directory, bottles, main_path="Formula/tool.rb"):
+        source = directory / "source"
+        self.run_command(["git", "switch", "-c", "pending-security-fix"], source)
+        recipe = source / "Formula/tool.rb"
+        (source / main_path).write_text(
+            ORIGINAL_RECIPE.replace("dependency: old", "dependency: new")
+            if main_path == "Formula/tool.rb" else "Concurrent main documentation fix\n")
+        self.run_command(["git", "commit", "-am", "Pending security fix"], source)
+        future_main = self.run_command(["git", "rev-parse", "HEAD"], source)
+        self.run_command(["git", "switch", "formula"], source)
+        self.run_command(["git", "merge", "--no-ff", "--no-edit", future_main], source)
+        recipe.write_text(REVIEWED_RECIPE)
+        if main_path == "README.md":
+            (source / main_path).write_text("New main documentation\n")
+        self.run_command(["git", "commit", "-am", "Restore reviewed tree"], source)
+        head = self.run_command(["git", "rev-parse", "HEAD"], source)
+        self.run_command(["git", "push", "origin", "HEAD:refs/pull/3/head"], source)
+        metadata = bottles / "tool.bottle.json"
+        value = json.loads(metadata.read_text())
+        value["tool"]["formula"]["tap_git_revision"] = head
+        metadata.write_text(json.dumps(value))
+        return head, future_main
+
+    def test_same_formula_main_update_already_in_pr_ancestry_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, _, bottles, environment = self.prepare_repository(directory)
+            head, future_main = self.prepare_ancestor_update(directory, bottles)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")),
+                              "3", head, str(bottles)], tap, env=environment)
+            self.run_command(["git", "merge-base", "--is-ancestor", future_main, "HEAD"], tap)
+            self.run_command(["git", "push", "origin", f"{future_main}:refs/heads/main"], directory / "source")
+            result = subprocess.run(self.push_command(environment), cwd=tap, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Published Formula changed on main", result.stderr)
+            self.assertEqual(self.run_command(["git", "rev-parse", "main"], directory / "remote.git"), future_main)
+
+    def test_unrelated_main_update_already_in_pr_ancestry_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, _, bottles, environment = self.prepare_repository(directory)
+            head, future_main = self.prepare_ancestor_update(directory, bottles, "README.md")
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")),
+                              "3", head, str(bottles)], tap, env=environment)
+            self.run_command(["git", "push", "origin", f"{future_main}:refs/heads/main"], directory / "source")
+            result = subprocess.run(self.push_command(environment), cwd=tap, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Concurrent main changes were not preserved", result.stderr)
+            self.assertEqual(self.run_command(["git", "rev-parse", "main"], directory / "remote.git"), future_main)
+
+    def test_push_advertised_tip_must_match_the_tip_checked_before_push(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            tap, _, bottles, environment = self.prepare_repository(directory)
+            head, future_main = self.prepare_ancestor_update(directory, bottles)
+            self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")),
+                              "3", head, str(bottles)], tap, env=environment)
+            wrapper = directory / "bin/git"
+            wrapper.write_text('''#!/bin/bash
+set -euo pipefail
+if [[ "$*" == *"push origin main" && ! -e "$PHK_PUSH_RACE_MARKER" ]]
+then
+  touch "$PHK_PUSH_RACE_MARKER"
+  "$PHK_REAL_GIT" -C "$PHK_FIXTURE_SOURCE" push origin "$PHK_FUTURE_MAIN:refs/heads/main"
+fi
+exec "$PHK_REAL_GIT" "$@"
+''')
+            wrapper.chmod(0o755)
+            environment.update(PHK_REAL_GIT=shutil.which("git"), PHK_FIXTURE_SOURCE=str(directory / "source"),
+                               PHK_FUTURE_MAIN=future_main, PHK_PUSH_RACE_MARKER=str(directory / "race.txt"))
+            result = subprocess.run(self.push_command(environment), cwd=tap, env=environment,
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("main changed after recipe verification", result.stderr)
+            self.assertIn("Published Formula changed on main", result.stderr)
+            self.assertEqual(self.run_command(["git", "rev-parse", "main"], directory / "remote.git"), future_main)
 
     def test_nonconflicting_recipe_change_before_upload_requires_new_ci(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -332,7 +416,7 @@ class PublishBottlesTests(unittest.TestCase):
             tap, head, bottles, environment = self.prepare_repository(directory)
             self.run_command(["bash", str(Path(__file__).with_name("publish_bottles.sh")), "3", head, str(bottles)], tap, env=environment)
             self.advance_dependency(directory)
-            result = subprocess.run(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])],
+            result = subprocess.run(self.push_command(environment),
                                     cwd=tap, env=environment, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Published Formula changed on main", result.stderr)
@@ -369,7 +453,7 @@ class PublishBottlesTests(unittest.TestCase):
             self.run_command(["git", "add", "."], source)
             self.run_command(["git", "commit", "-m", "Add another Formula"], source)
             self.run_command(["git", "push", "origin", "main"], source)
-            self.run_command(["bash", str(Path(__file__).with_name("push_bottles.sh")), json.dumps(["Formula/tool.rb"])], tap)
+            self.run_command(self.push_command(environment), tap)
             self.assertEqual((tap / "Formula/other.rb").read_text(), "Another reviewed tool\n")
             self.assertEqual(self.run_command(["git", "show", "main:Formula/tool.rb"], directory / "remote.git"), REVIEWED_RECIPE.strip())
 

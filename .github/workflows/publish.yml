@@ -121,4 +121,5 @@ jobs:
       - name: Push commits
         env:
           FORMULA_PATHS: ${{ steps.publish_bottles.outputs.formula_paths }}
-        run: bash scripts/push_bottles.sh "$FORMULA_PATHS"
+          PUBLICATION_BASE_SHA: ${{ steps.publish_bottles.outputs.publication_base_sha }}
+        run: bash scripts/push_bottles.sh "$FORMULA_PATHS" "$PUBLICATION_BASE_SHA"
