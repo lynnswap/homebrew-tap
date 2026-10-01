@@ -5,6 +5,11 @@ class Privateheaderkit < Formula
   sha256 "3544dca9a1237c8c9069a830873d0421fc10e8be23992316a1a8352374ef847e"
   license "MIT"
 
+  bottle do
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/privateheaderkit-0.7.0"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "77ceef31d4778fac45bc248a6813ba91753fc18a2ac8f77512852b7b9bbc279d"
+  end
+
   depends_on xcode: ["26.4", :build]
   depends_on arch: :arm64
   depends_on macos: :sonoma
