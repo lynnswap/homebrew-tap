@@ -10,9 +10,10 @@ The shared **brew test-bot** workflow checks changed formulae and builds bottles
 Its current macOS builder uses Apple Silicon macOS 26 with Xcode 26.6; bottles
 are registered for that build platform. Each tool documents its own requirements.
 
-For PrivateHeaderKit, start with `privateheaderkit.rb` from its
-[published release](https://github.com/lynnswap/PrivateHeaderKit/releases).
-Keep its installation, dependency and test changes synchronized with that recipe.
+For PrivateHeaderKit, use the verified `privateheaderkit.rb` from its release
+workflow and follow the owning project's
+[source-preparation guide](https://github.com/lynnswap/PrivateHeaderKit/blob/main/CONTRIBUTING.md#releases).
+Keep installation, dependency and test changes synchronized with that recipe.
 
 See Homebrew's [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
 and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
