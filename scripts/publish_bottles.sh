@@ -23,7 +23,7 @@ git merge --no-commit --no-ff FETCH_HEAD
 python3 "${script_directory}/bottle_recipes.py" verify "${bottle_directory}"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]
 then
-  echo "publication_base_sha=${publication_base}" >> "$GITHUB_OUTPUT"
+  echo "publication_base_sha=${publication_base}" >>"${GITHUB_OUTPUT}"
 fi
 git commit -m "Merge Formula pull request #${pull_request}" -m "Closes #${pull_request}."
 
