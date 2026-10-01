@@ -1,6 +1,6 @@
 paths:
   # Homebrew passes tap paths outside the workspace symlink; match that prefix.
-  '**/.github/workflows/publish.yml':
+  '**/.github/workflows/*.yml':
     ignore:
       # Remove when actionlint supports GitHub's documented concurrency.queue.
       # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency

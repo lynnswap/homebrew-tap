@@ -10,6 +10,7 @@ permissions: {}
 
 concurrency:
   group: renovate-formula-updates
+  queue: max
   cancel-in-progress: false
 
 jobs:

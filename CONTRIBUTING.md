@@ -61,6 +61,8 @@ PrivateHeaderKit tag starts Renovate unless an open Formula PR already proposes
 it. Existing proposals wait for review and approvals without repeatedly starting
 the update writer. Source tags can therefore initiate tap builds before core
 stable publication; the daily/manual runs still perform regular maintenance.
+Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
+replace a pending manual or daily maintenance request.
 
 Renovate currently maintains only `Formula/privateheaderkit.rb`, updating
 its source URL and SHA-256 through PRs without automerging. Adding a tool does not
