@@ -44,8 +44,17 @@ class GitHub:
             page += 1
 
     def job_log(self, job_id):
+        # Runner images can ship an older gh; newer versions require this opt-in
+        # for raw job logs containing GitHub's ANSI-colored command output.
+        help_result = subprocess.run(["gh", "api", "--help"], capture_output=True, text=True, check=False)
+        if help_result.returncode:
+            raise CandidateError(help_result.stderr.strip() or "Could not inspect gh api options.")
+        command = ["gh", "api"]
+        if "--allow-escape-sequences" in help_result.stdout:
+            command.append("--allow-escape-sequences")
+        command.append(f"repos/{self.repository}/actions/jobs/{job_id}/logs")
         result = subprocess.run(
-            ["gh", "api", "--allow-escape-sequences", f"repos/{self.repository}/actions/jobs/{job_id}/logs"],
+            command,
             capture_output=True, text=True, check=False,
         )
         if result.returncode:

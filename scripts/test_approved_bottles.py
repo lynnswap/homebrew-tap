@@ -236,6 +236,14 @@ class ApprovedBottlesTests(unittest.TestCase):
             with self.assertRaisesRegex(guard.CandidateError, "permission denied"):
                 guard.GitHub("owner/tap").api("actions/artifacts/7")
 
+    def test_job_logs_use_only_options_advertised_by_the_installed_cli(self):
+        for help_text, expected in (("gh api options", []), ("--allow-escape-sequences", ["--allow-escape-sequences"])):
+            help_result = subprocess.CompletedProcess([], 0, stdout=help_text, stderr="")
+            log_result = subprocess.CompletedProcess([], 0, stdout="timestamp {\"pull_request\": 3}", stderr="")
+            with patch.object(guard.subprocess, "run", side_effect=[help_result, log_result]) as run:
+                self.assertEqual(guard.GitHub("owner/tap").job_log(7), log_result.stdout)
+                self.assertEqual(run.call_args.args[0], ["gh", "api", *expected, "repos/owner/tap/actions/jobs/7/logs"])
+
 
 class PublishBottlesTests(unittest.TestCase):
     def run_command(self, command, directory, **kwargs):
