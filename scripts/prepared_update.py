@@ -33,6 +33,7 @@ def source_tag(entry):
 
 def candidate(tap, source):
     current = source_tag(tap.api(f"contents/{FORMULA}?ref=main"))
+    # Matching references returns the full namespace without paging parameters.
     tags = [item["ref"].removeprefix("refs/tags/")
             for item in source.api("git/matching-refs/tags/v")]
     stable = [tag for tag in tags if stable_version(tag) is not None]
@@ -50,7 +51,7 @@ def candidate(tap, source):
         proposed = GitHub(head["repo"]["full_name"]).api(f"contents/{FORMULA}?ref={head['sha']}")
         try:
             proposed_tag = source_tag(proposed)
-        except CandidateError:
+        except (CandidateError, ValueError, UnicodeError):
             continue
         if proposed_tag == latest:
             return dict(value, pull_request=pull["number"], reason="The source update already has an open Formula PR.")

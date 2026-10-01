@@ -84,6 +84,25 @@ class PreparedUpdateTests(unittest.TestCase):
                                  if path.endswith("/files") else original_pages(path))
         self.assertTrue(discovery.candidate(tap, FakeGitHub())["update"])
 
+    def test_invalid_encoded_or_binary_proposals_do_not_block_discovery(self):
+        pull = dict(number=18, head=dict(sha="a" * 40, repo=dict(full_name="lynnswap/homebrew-tap")))
+        for content in ("A", base64.b64encode(b"\xff").decode()):
+            proposed = FakeGitHub()
+            proposed.formula = dict(content=content)
+            with patch.object(discovery, "GitHub", return_value=proposed):
+                self.assertTrue(discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub())["update"])
+
+    def test_large_matching_namespace_keeps_the_highest_stable_tag(self):
+        tags = [f"v0.{version}.0" for version in range(201)]
+        source = FakeGitHub(tags=tags)
+        self.assertEqual(discovery.candidate(FakeGitHub(), source)["latest"], "v0.200.0")
+
+    def test_binary_published_formula_is_still_reported_as_an_error(self):
+        tap = FakeGitHub()
+        tap.formula = dict(content=base64.b64encode(b"\xff").decode())
+        with self.assertRaises(UnicodeError):
+            discovery.candidate(tap, FakeGitHub())
+
     def test_unrelated_pr_does_not_read_or_evaluate_its_formula(self):
         pull = dict(number=7)
         tap = FakeGitHub(pulls=[pull])
