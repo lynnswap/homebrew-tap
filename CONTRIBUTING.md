@@ -49,14 +49,22 @@ secret is needed.
 Run the publication guard tests locally with:
 
 ```sh
-python3 -B -m unittest discover -s scripts -p 'test_approved_bottles.py'
+python3 -B -m unittest discover -s scripts -p 'test_*.py'
 ```
 
 ## Automated maintenance
 
 Dependabot proposes weekly updates to workflow actions. **Propose Homebrew
 updates** runs Renovate daily at 08:17 Japan time or on manual dispatch from
-`main`. Renovate currently maintains only `Formula/privateheaderkit.rb`, updating
+`main`. A short read-only check also runs every 15 minutes: a newer public stable
+PrivateHeaderKit tag starts Renovate unless an open Formula PR already proposes
+it. Existing proposals wait for review and approvals without repeatedly starting
+the update writer. Source tags can therefore initiate tap builds before core
+stable publication; the daily/manual runs still perform regular maintenance.
+Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
+replace a pending manual or daily maintenance request.
+
+Renovate currently maintains only `Formula/privateheaderkit.rb`, updating
 its source URL and SHA-256 through PRs without automerging. Adding a tool does not
 automatically enable Renovate for it; review the scope in
 [.github/renovate-config.json](.github/renovate-config.json) separately.

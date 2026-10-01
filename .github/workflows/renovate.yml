@@ -3,17 +3,48 @@ name: Propose Homebrew updates
 on:
   schedule:
     - cron: "17 23 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions: {}
 
 concurrency:
   group: renovate-formula-updates
+  queue: max
   cancel-in-progress: false
 
 jobs:
-  renovate:
+  candidate:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      update: ${{ steps.proposal.outputs.update }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Check for an unproposed public source tag
+        id: proposal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          args=()
+          if [[ "$EVENT_NAME" == workflow_dispatch || "$SCHEDULE" == '17 23 * * *' ]]; then
+            args+=(--maintenance)
+          fi
+          python3 scripts/prepared_update.py --repo "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT" "${args[@]}"
+
+  renovate:
+    needs: candidate
+    if: needs.candidate.outputs.update == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
