@@ -11,6 +11,7 @@ script_directory="$(dirname "${BASH_SOURCE[0]}")"
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
+publication_base="$(git rev-parse HEAD)"
 git fetch origin "refs/pull/${pull_request}/head"
 fetched_head="$(git rev-parse FETCH_HEAD)"
 if [[ "${fetched_head}" != "${head_sha}" ]]
@@ -18,8 +19,12 @@ then
   echo 'error: Formula PR head changed after approval; start a new approval.' >&2
   exit 1
 fi
-git merge --squash FETCH_HEAD
+git merge --no-commit --no-ff FETCH_HEAD
 python3 "${script_directory}/bottle_recipes.py" verify "${bottle_directory}"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]
+then
+  echo "publication_base_sha=${publication_base}" >>"${GITHUB_OUTPUT}"
+fi
 git commit -m "Merge Formula pull request #${pull_request}" -m "Closes #${pull_request}."
 
 # pr-upload consumes local JSON/tar files. pr-pull would download artifacts again
