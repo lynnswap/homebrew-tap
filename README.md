@@ -1,96 +1,15 @@
 # lynnswap Homebrew tap
 
-A shared Homebrew tap for lynnswap's command-line tools.
-
-## Availability
-
-No formulae are published yet. PrivateHeaderKit will be added after its first
-source release with Homebrew packaging. Other tools can be added through their
-own formula pull requests.
-
-## Maintaining formulae
-
-Each tool has a file under `Formula/`. Build dependencies, installation steps,
-and functional tests belong to that formula. The shared workflows check changed
-formulae and create bottles for formula pull requests.
-
-The macOS builder uses Apple Silicon macOS 26 with Xcode 26.6. Homebrew registers
-the resulting bottles for that build platform; older macOS versions are not
-distribution or CI targets of this tap.
-
-For PrivateHeaderKit, use `privateheaderkit.rb` from a published
-[PrivateHeaderKit release](https://github.com/lynnswap/PrivateHeaderKit/releases).
-Its source URL must already be available. Submit the file as a pull request to
-this repository instead of adding it directly to `main`.
-
-After Formula PR checks pass, the **brew pr-pull** workflow prepares a read-only
-publication candidate and waits for the **homebrew-publish** Environment approval.
-Review its PR-head SHA, successful CI run/attempt, and bottle artifact digest in
-the Actions summary, then choose **Review deployments → Approve and deploy**.
-Publication revalidates the candidate, downloads the exact tested artifact ID,
-and passes those local files directly to `brew pr-upload`. It
-publishes the bottles, updates the formula's bottle metadata, and merges that
-reviewed change.
-Before upload, the Formula contents must match the Git revision recorded in
-Homebrew's tested bottle JSON. Concurrent changes to those published Formula
-paths require new bottle CI and approval; unrelated Formula and documentation
-changes can be merged when retrying the final push.
-Only eligible publication jobs enter the shared queue, which preserves pending
-candidates instead of replacing them when another CI run completes.
-
-You can also dispatch **brew pr-pull** on `main` with the Formula PR number and
-its full reviewed head SHA. Both inputs are required. A changed head, newer or
-failed CI, replaced artifact, or expired artifact stops publication. Review the
-new candidate and start a new approval rather than substituting an unreviewed
-revision. Bottle artifacts are retained for 35 days. Code/documentation PRs and
-CI completions without a Formula publication candidate are skipped.
-
-In **Settings → Environments → homebrew-publish**, require the maintainer as a
-reviewer, allow only the `main` branch, and disable administrator bypass. Leave
-**Prevent self-review** off when that maintainer also initiates publication.
-Build/test jobs and candidate validation are read-only; the short approved
-publication job alone receives Contents write, attestation, and
-identity-token permissions. No additional token or Environment secret is needed.
-
-Publication guard tests use in-memory GitHub responses and temporary Git
-repositories with a stubbed Homebrew uploader. Run them with:
+Homebrew formulae for lynnswap's command-line tools.
 
 ```sh
-python3 -B -m unittest discover -s scripts -p 'test_approved_bottles.py'
+brew install lynnswap/tap/<formula>
 ```
 
-Once a formula is published, install it with `brew install lynnswap/tap/<name>`.
-Use `brew upgrade <name>` and `brew uninstall <name>` to manage it.
+Available formulae:
 
-See [Homebrew's tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
-and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+- [privateheaderkit](https://github.com/lynnswap/PrivateHeaderKit)
 
 ## Automated maintenance
 
-Dependabot proposes weekly updates to pinned workflow actions. The
-**Propose Homebrew updates** workflow runs Renovate daily at 08:17 Japan time,
-with a manual dispatch available on `main`. It uses this repository's
-`GITHUB_TOKEN`, proposes updates only for `Formula/privateheaderkit.rb`, and
-never merges a PR. Its action and container image are pinned to immutable
-identities; review both pins when updating Renovate.
-
-The first Formula must be added from the first published PrivateHeaderKit source
-release before Renovate can maintain it. Renovate updates the source URL and
-SHA-256; changes to installation, dependencies, or tests must still be reviewed
-and synchronized from the source release's Formula.
-
-In **Settings → Actions → General**, keep workflow permissions read-only by
-default and enable **Allow GitHub Actions to create and approve pull requests**.
-Only the updater job requests Contents and Pull requests write permissions.
-PRs created with `GITHUB_TOKEN` require a maintainer to choose **Approve workflows
-to run** before their CI starts. Review the resulting Formula change and bottle
-CI before publishing; PR creation does not authorize publication.
-
-Renovate configuration is checked by its strict config validator and exercised
-in a read-only, full dry-run workflow for configuration changes. Its manager and
-file scope are forced by trusted
-configuration, and repository-supplied Renovate configuration is ignored.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for formula contributions and tap maintenance.
