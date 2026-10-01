@@ -30,7 +30,7 @@ class FakeGitHub:
         self.calls.append(path)
         if path.startswith("pulls?"):
             return self.pulls
-        return [dict(filename=discovery.FORMULA)]
+        return [dict(filename=discovery.FORMULA, status="modified")]
 
 
 class PreparedUpdateTests(unittest.TestCase):
@@ -76,6 +76,13 @@ class PreparedUpdateTests(unittest.TestCase):
     def test_deleted_proposal_repository_does_not_block_discovery(self):
         pull = dict(number=18, head=dict(sha="a" * 40, repo=None))
         self.assertTrue(discovery.candidate(FakeGitHub(pulls=[pull]), FakeGitHub())["update"])
+
+    def test_formula_removal_is_not_an_existing_source_proposal(self):
+        tap = FakeGitHub(pulls=[dict(number=18)])
+        original_pages = tap.pages
+        tap.pages = lambda path: ([dict(filename=discovery.FORMULA, status="removed")]
+                                 if path.endswith("/files") else original_pages(path))
+        self.assertTrue(discovery.candidate(tap, FakeGitHub())["update"])
 
     def test_unrelated_pr_does_not_read_or_evaluate_its_formula(self):
         pull = dict(number=7)

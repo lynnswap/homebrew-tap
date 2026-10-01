@@ -41,7 +41,8 @@ def candidate(tap, source):
     if stable_version(latest) <= stable_version(current):
         return dict(value, reason="The published Formula already covers the available stable tags.")
     for pull in tap.pages("pulls?state=open&base=main"):
-        if not any(item["filename"] == FORMULA for item in tap.pages(f"pulls/{pull['number']}/files")):
+        if not any(item["filename"] == FORMULA and item["status"] != "removed"
+                   for item in tap.pages(f"pulls/{pull['number']}/files")):
             continue
         head = pull["head"]
         if head["repo"] is None:
