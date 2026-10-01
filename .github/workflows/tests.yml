@@ -12,6 +12,17 @@ defaults:
     shell: bash -xeuo pipefail {0}
 
 jobs:
+  guard-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s scripts -p 'test_approved_bottles.py'
+
   test-bot:
     runs-on: macos-26
     timeout-minutes: 60
@@ -48,5 +59,6 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bottles_macos-arm64
+          name: bottles_macos-arm64_${{ github.run_id }}_${{ github.run_attempt }}
           path: '*.bottle.*'
+          retention-days: 35
