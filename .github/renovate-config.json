@@ -19,6 +19,14 @@
       "Formula/privateheaderkit.rb",
       "Formula/custom-xcode-build-service.rb"
     ],
-    "automerge": false
+    "automerge": false,
+    "packageRules": [
+      {
+        "matchFileNames": [
+          "Formula/custom-xcode-build-service.rb"
+        ],
+        "allowedVersions": "/^v\\d+\\.\\d+\\.\\d+$/"
+      }
+    ]
   }
 }
