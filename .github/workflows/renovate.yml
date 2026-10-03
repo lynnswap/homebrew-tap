@@ -57,7 +57,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - name: Propose PrivateHeaderKit Formula updates
+      - name: Propose configured Formula updates
         uses: renovatebot/github-action@6d26fcf0275dc65624cbc3d51fe78bc773f98321 # v46.3.6
         with:
           configurationFile: .github/renovate-config.json
