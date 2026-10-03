@@ -2,14 +2,9 @@
 
 Homebrew formulae for lynnswap's command-line tools.
 
-```sh
-brew install lynnswap/tap/<formula>
-```
-
-Available formulae:
-
 - [privateheaderkit](https://github.com/lynnswap/PrivateHeaderKit)
+- [custom-xcode-build-service](https://github.com/lynnswap/swift-build)
 
-## Automated maintenance
+See each repository for installation, usage, and requirements.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for formula contributions and tap maintenance.
+For tap contributions and maintenance, see [CONTRIBUTING.md](CONTRIBUTING.md).
