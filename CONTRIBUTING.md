@@ -9,9 +9,11 @@ must be public before bottle CI runs.
 The shared **brew test-bot** workflow checks changed formulae and builds bottles.
 PrivateHeaderKit builds on Apple Silicon macOS 26 with Xcode 26.6, matching its
 source release's published-bottle verification. Custom Xcode Build Service uses
-the `xcode-27` runner with Xcode 27.0 (macOS 27). Bottles are registered for their
-actual build platform. On macOS 26, the custom service builds from source with
-Xcode 27. Each tool documents its own requirements. Keep Formulae requiring
+the `xcode-27` runner with Xcode 27.0 (macOS 27), targeting macOS 26. Its bottle is
+registered as `arm64_tahoe`, so Homebrew installs it on macOS 26 and later.
+The receipt retains the actual build environment. CI also installs that bottle
+on macOS 26 without forcing bottle selection and runs the packaged verification.
+Each tool documents its own requirements. Keep Formulae requiring
 different builders in separate PRs; `scripts/formula_builder.py` selects the
 builder from the changed Formula paths.
 
