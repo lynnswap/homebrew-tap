@@ -1,0 +1,21 @@
+import unittest
+
+from approved_bottles import CandidateError
+from formula_builder import builder
+
+
+class FormulaBuilderTests(unittest.TestCase):
+    def test_custom_service_uses_xcode_27(self):
+        self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="added")])["runner"], "xcode-27")
+
+    def test_existing_privateheaderkit_delivery_keeps_its_macos_26_bottle(self):
+        self.assertEqual(builder([dict(filename="Formula/privateheaderkit.rb", status="modified")])["runner"], "macos-26")
+
+    def test_mixed_build_environments_require_separate_formula_prs(self):
+        with self.assertRaises(CandidateError):
+            builder([dict(filename=f"Formula/{name}.rb", status="modified")
+                     for name in ("privateheaderkit", "custom-xcode-build-service")])
+
+    def test_removals_and_non_formula_changes_do_not_select_a_builder(self):
+        self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="removed"),
+                                  dict(filename="README.md", status="modified")])["runner"], "macos-26")

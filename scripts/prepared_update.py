@@ -10,9 +10,10 @@ import sys
 
 from approved_bottles import CandidateError, GitHub
 
-SOURCE_REPOSITORY = "lynnswap/PrivateHeaderKit"
-FORMULA = "Formula/privateheaderkit.rb"
-SOURCE_PREFIX = f"https://github.com/{SOURCE_REPOSITORY}/archive/refs/tags/"
+SOURCES = {
+    "Formula/privateheaderkit.rb": "lynnswap/PrivateHeaderKit",
+    "Formula/custom-xcode-build-service.rb": "lynnswap/swift-build",
+}
 
 
 def stable_version(tag):
@@ -20,7 +21,8 @@ def stable_version(tag):
     return tuple(map(int, match.groups())) if match else None
 
 
-def source_tag(entry):
+def source_tag(entry, repository):
+    prefix = f"https://github.com/{repository}/archive/refs/tags/"
     if not isinstance(entry, dict) or not isinstance(entry.get("content"), str):
         return None
     try:
@@ -28,14 +30,14 @@ def source_tag(entry):
     except (ValueError, UnicodeError):
         return None
     urls = re.findall(r'''^  url ["']([^"'\n]+)["'](?:\s+#.*)?$''', formula, re.MULTILINE)
-    if len(urls) != 1 or not urls[0].startswith(SOURCE_PREFIX) or not urls[0].endswith(".tar.gz"):
+    if len(urls) != 1 or not urls[0].startswith(prefix) or not urls[0].endswith(".tar.gz"):
         return None
-    tag = urls[0][len(SOURCE_PREFIX):-len(".tar.gz")]
+    tag = urls[0][len(prefix):-len(".tar.gz")]
     return tag if stable_version(tag) is not None else None
 
 
-def candidate(tap, source):
-    current = source_tag(tap.api(f"contents/{FORMULA}?ref=main"))
+def candidate(tap, source, formula):
+    current = source_tag(tap.api(f"contents/{formula}?ref=main"), source.repository)
     if current is None:
         raise CandidateError("The published Formula must name a literal public stable tag-archive URL.")
     # Matching references returns the full namespace without paging parameters.
@@ -47,16 +49,24 @@ def candidate(tap, source):
     if stable_version(latest) <= stable_version(current):
         return dict(value, reason="The published Formula already covers the available stable tags.")
     for pull in tap.pages("pulls?state=open&base=main"):
-        if not any(item["filename"] == FORMULA and item["status"] != "removed"
+        if not any(item["filename"] == formula and item["status"] != "removed"
                    for item in tap.pages(f"pulls/{pull['number']}/files")):
             continue
         head = pull["head"]
         if head["repo"] is None:
             continue
-        proposed = GitHub(head["repo"]["full_name"]).api(f"contents/{FORMULA}?ref={head['sha']}")
-        if source_tag(proposed) == latest:
+        proposed = GitHub(head["repo"]["full_name"]).api(f"contents/{formula}?ref={head['sha']}")
+        if source_tag(proposed, source.repository) == latest:
             return dict(value, pull_request=pull["number"], reason="The source update already has an open Formula PR.")
     return dict(value, update=True, reason="A public stable source tag needs a Formula proposal.")
+
+
+def candidates(tap):
+    available = {entry["path"] for entry in tap.api("contents/Formula?ref=main")}
+    # A new tool joins discovery after its first released recipe is installed.
+    values = {formula: candidate(tap, GitHub(repository), formula)
+              for formula, repository in SOURCES.items() if formula in available}
+    return dict(update=any(value["update"] for value in values.values()), formulae=values)
 
 
 def main():
@@ -67,7 +77,7 @@ def main():
     args = parser.parse_args()
     try:
         value = (dict(update=True, reason="Regular or manually requested Renovate maintenance.")
-                 if args.maintenance else candidate(GitHub(args.repo), GitHub(SOURCE_REPOSITORY)))
+                 if args.maintenance else candidates(GitHub(args.repo)))
         if args.github_output:
             with args.github_output.open("a") as output:
                 output.write(f"update={'true' if value['update'] else 'false'}\n")

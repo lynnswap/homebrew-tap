@@ -7,13 +7,24 @@ dependencies, installation steps and functional tests in the Formula. Source URL
 must be public before bottle CI runs.
 
 The shared **brew test-bot** workflow checks changed formulae and builds bottles.
-Its current macOS builder uses Apple Silicon macOS 26 with Xcode 26.6; bottles
-are registered for that build platform. Each tool documents its own requirements.
+PrivateHeaderKit builds on Apple Silicon macOS 26 with Xcode 26.6, matching its
+source release's published-bottle verification. Custom Xcode Build Service uses
+the `xcode-27` runner with Xcode 27.0 (macOS 27). Bottles are registered for their
+actual build platform. On macOS 26, the custom service builds from source with
+Xcode 27. Each tool documents its own requirements. Keep Formulae requiring
+different builders in separate PRs; `scripts/formula_builder.py` selects the
+builder from the changed Formula paths.
 
 For PrivateHeaderKit, use the verified `privateheaderkit.rb` from its release
 workflow and follow the owning project's
 [source-preparation guide](https://github.com/lynnswap/PrivateHeaderKit/blob/main/CONTRIBUTING.md#releases).
 Keep installation, dependency and test changes synchronized with that recipe.
+
+For Custom Xcode Build Service, use the generated
+`custom-xcode-build-service.rb` from its first `v*` release. The recipe reads the
+source commit from the downloaded Git archive, so URL/checksum updates do not
+leave stale commit metadata behind. See its
+[distribution guide](https://github.com/lynnswap/swift-build/blob/main/Utilities/CustomXcodeBuildService/README.md#releases).
 
 See Homebrew's [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
 and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
@@ -60,7 +71,7 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 Dependabot proposes weekly updates to workflow actions. **Propose Homebrew
 updates** runs Renovate daily at 08:17 Japan time or on manual dispatch from
 `main`. A short read-only check also runs every 15 minutes: a newer public stable
-PrivateHeaderKit tag starts Renovate unless an open Formula PR already proposes
+tag for a configured tool starts Renovate unless an open Formula PR already proposes
 it. Existing proposals do not repeatedly start the update writer. After discovery
 or maintenance, a separate trusted job starts read-only bottle CI for native
 Formula proposals that do not already have CI. Source tags initiate tap builds before core
@@ -68,9 +79,12 @@ stable publication; the daily/manual runs still perform regular maintenance.
 Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
 replace a pending manual or daily maintenance request.
 
-Renovate currently maintains only `Formula/privateheaderkit.rb`, updating
-its source URL and SHA-256 through PRs without automerging. Adding a tool does not
-automatically enable Renovate for it; review the scope in
+Renovate maintains `Formula/privateheaderkit.rb` and
+`Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
+through PRs without automerging. Both use stable `vX.Y.Z` source tags; older
+`custom-v*` build-service tags are not update candidates. Discovery starts for a
+tool after its first released Formula is added; absent recipes are not synthesized.
+For a new tool, update `scripts/prepared_update.py` and the scope in
 [.github/renovate-config.json](.github/renovate-config.json) separately.
 
 In **Settings → Actions → General**, keep workflow permissions read-only by
