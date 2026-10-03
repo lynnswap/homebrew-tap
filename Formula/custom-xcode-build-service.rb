@@ -5,6 +5,11 @@ class CustomXcodeBuildService < Formula
   sha256 "42d179e677fe277b45542105afc2d6c910af65f32e5e12b4244986f6656b24f8"
   license "Apache-2.0" => { with: "Swift-exception" }
 
+  bottle do
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/custom-xcode-build-service-0.3.0"
+    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "60ec8fe2a70ac38e2bf569680109b7302c52c4ecfa0ffce901334f3c8091aaca"
+  end
+
   depends_on "python@3.14" => [:build, :test]
   depends_on xcode: ["27.0", :build, :test]
   depends_on arch: :arm64
