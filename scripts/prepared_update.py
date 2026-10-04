@@ -36,13 +36,15 @@ def source_tag(entry, repository):
     return tag if stable_version(tag) is not None else None
 
 
-def candidate(tap, source, formula):
+def candidate(tap, source, formula, requested_tag=None):
     current = source_tag(tap.api(f"contents/{formula}?ref=main"), source.repository)
     if current is None:
         raise CandidateError("The published Formula must name a literal public stable tag-archive URL.")
     # Matching references returns the full namespace without paging parameters.
     tags = [item["ref"].removeprefix("refs/tags/")
             for item in source.api("git/matching-refs/tags/v")]
+    if requested_tag is not None and requested_tag not in tags:
+        raise CandidateError("The notified stable source tag is not public.")
     stable = [tag for tag in tags if stable_version(tag) is not None]
     latest = max(stable, key=stable_version) if stable else current
     value = dict(current=current, latest=latest, update=False)
@@ -69,18 +71,32 @@ def candidates(tap):
     return dict(update=any(value["update"] for value in values.values()), formulae=values)
 
 
+def notified_candidate(tap, repository, tag):
+    formula = next((path for path, source in SOURCES.items() if source == repository), None)
+    if formula is None or not tag or stable_version(tag) is None:
+        raise CandidateError("Notify a configured source repository and a stable vX.Y.Z tag.")
+    value = candidate(tap, GitHub(repository), formula, requested_tag=tag)
+    return dict(update=value["update"], priority_update=True, formulae={formula: value})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--maintenance", action="store_true")
     parser.add_argument("--github-output", type=Path)
+    parser.add_argument("--source-repository")
+    parser.add_argument("--source-tag")
     args = parser.parse_args()
     try:
-        value = (dict(update=True, reason="Regular or manually requested Renovate maintenance.")
-                 if args.maintenance else candidates(GitHub(args.repo)))
+        if args.source_repository or args.source_tag:
+            value = notified_candidate(GitHub(args.repo), args.source_repository, args.source_tag)
+        else:
+            value = (dict(update=True, reason="Regular or manually requested Renovate maintenance.")
+                     if args.maintenance else candidates(GitHub(args.repo)))
         if args.github_output:
             with args.github_output.open("a") as output:
                 output.write(f"update={'true' if value['update'] else 'false'}\n")
+                output.write(f"priority_update={'true' if value.get('priority_update') else 'false'}\n")
         print(json.dumps(value))
         return 0
     except (CandidateError, KeyError, ValueError, UnicodeError, OSError) as error:

@@ -81,6 +81,15 @@ stable publication; the daily/manual runs still perform regular maintenance.
 Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
 replace a pending manual or daily maintenance request.
 
+A prepared source can dispatch **Propose Homebrew updates** immediately on
+`main` with `source_repository` and `source_tag`. The read-only discovery job
+accepts only a configured source and a public stable `vX.Y.Z` tag, then checks
+whether its Formula needs a proposal. A repeated notification reuses an existing
+proposal. A valid release notification removes Renovate's hourly PR throttle for
+that run; scheduled and ordinary manual maintenance keep the configured limit.
+The existing native PR CI and `homebrew-publish` approval still own validation,
+bottle publication, and merge. Periodic discovery remains available for recovery.
+
 Renovate maintains `Formula/privateheaderkit.rb` and
 `Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
 through PRs without automerging. Both use stable `vX.Y.Z` source tags; older

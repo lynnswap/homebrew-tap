@@ -5,6 +5,15 @@ on:
     - cron: "17 23 * * *"
     - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Registered source repository that prepared a stable tag
+        required: false
+        type: string
+      source_tag:
+        description: Public stable vX.Y.Z source tag
+        required: false
+        type: string
 
 permissions: {}
 
@@ -23,6 +32,7 @@ jobs:
       pull-requests: read
     outputs:
       update: ${{ steps.proposal.outputs.update }}
+      priority_update: ${{ steps.proposal.outputs.priority_update }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,9 +44,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
         run: |
           args=()
-          if [[ "$EVENT_NAME" == workflow_dispatch || "$SCHEDULE" == '17 23 * * *' ]]; then
+          if [[ -n "$SOURCE_REPOSITORY" || -n "$SOURCE_TAG" ]]; then
+            args+=(--source-repository "$SOURCE_REPOSITORY" --source-tag "$SOURCE_TAG")
+          elif [[ "$EVENT_NAME" == workflow_dispatch || "$SCHEDULE" == '17 23 * * *' ]]; then
             args+=(--maintenance)
           fi
           python3 scripts/prepared_update.py --repo "$GITHUB_REPOSITORY" \
@@ -57,6 +71,9 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+      - name: Remove the hourly PR throttle for a verified release notification
+        if: needs.candidate.outputs.priority_update == 'true'
+        run: echo 'RENOVATE_PR_HOURLY_LIMIT=0' >> "$GITHUB_ENV"
       - name: Propose configured Formula updates
         uses: renovatebot/github-action@6d26fcf0275dc65624cbc3d51fe78bc773f98321 # v46.3.6
         with:

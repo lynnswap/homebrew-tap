@@ -1,4 +1,8 @@
 import base64
+import contextlib
+import io
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -162,6 +166,59 @@ class MultipleToolDiscoveryTests(unittest.TestCase):
             result = discovery.candidates(tap)
             self.assertTrue(result["update"])
             self.assertEqual(set(result["formulae"]), set(discovery.SOURCES))
+
+
+class SourceNotificationTests(unittest.TestCase):
+    def setUp(self):
+        self.tap = FakeGitHub()
+        self.tap.formula = dict(content=base64.b64encode(
+            b'  url "https://github.com/lynnswap/swift-build/archive/refs/tags/v0.3.3.tar.gz"\n').decode())
+        self.source = FakeGitHub(tags=["v0.3.4"])
+        self.source.repository = "lynnswap/swift-build"
+
+    def test_registered_public_stable_tag_starts_an_immediate_update(self):
+        with patch.object(discovery, "GitHub", return_value=self.source) as github:
+            result = discovery.notified_candidate(self.tap, self.source.repository, "v0.3.4")
+        github.assert_called_once_with("lynnswap/swift-build")
+        self.assertTrue(result["update"])
+        self.assertTrue(result["priority_update"])
+        self.assertEqual(set(result["formulae"]), {"Formula/custom-xcode-build-service.rb"})
+
+    def test_unregistered_source_and_unstable_or_missing_tags_never_access_source(self):
+        for repo, tag in (("other/project", "v0.3.4"), ("lynnswap/swift-build", "v0.3.5-rc.1"),
+                          ("lynnswap/swift-build", "custom-v0.3.4"), ("lynnswap/swift-build", None)):
+            with self.subTest(repo=repo, tag=tag), patch.object(discovery, "GitHub") as github:
+                with self.assertRaises(discovery.CandidateError):
+                    discovery.notified_candidate(self.tap, repo, tag)
+                github.assert_not_called()
+
+    def test_missing_public_tag_and_api_failures_do_not_enable_priority_updates(self):
+        with patch.object(discovery, "GitHub", return_value=self.source):
+            with self.assertRaisesRegex(discovery.CandidateError, "not public"):
+                discovery.notified_candidate(self.tap, self.source.repository, "v0.3.5")
+            with patch.object(self.source, "api", side_effect=discovery.CandidateError("Forbidden")):
+                with self.assertRaisesRegex(discovery.CandidateError, "Forbidden"):
+                    discovery.notified_candidate(self.tap, self.source.repository, "v0.3.4")
+
+    def test_repeated_notification_of_an_already_published_formula_does_not_start_writer(self):
+        self.tap.formula = dict(content=base64.b64encode(
+            b'  url "https://github.com/lynnswap/swift-build/archive/refs/tags/v0.3.4.tar.gz"\n').decode())
+        with patch.object(discovery, "GitHub", return_value=self.source):
+            self.assertFalse(discovery.notified_candidate(self.tap, self.source.repository, "v0.3.4")["update"])
+
+    def test_cli_emits_priority_only_after_public_tag_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "outputs"
+            args = ["prepared_update", "--repo", "lynnswap/homebrew-tap", "--source-repository",
+                    "lynnswap/swift-build", "--source-tag", "v0.3.4", "--github-output", str(output)]
+            with patch("sys.argv", args), patch.object(discovery, "GitHub", side_effect=[self.tap, self.source]), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(discovery.main(), 0)
+            self.assertEqual(output.read_text(), "update=true\npriority_update=true\n")
+            output.unlink()
+            self.source.tags = []
+            with patch("sys.argv", args), patch.object(discovery, "GitHub", side_effect=[self.tap, self.source]), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(discovery.main(), 1)
+            self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":
