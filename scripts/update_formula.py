@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import re
 import sys
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 
 from approved_bottles import CandidateError, GitHub
@@ -57,15 +57,29 @@ def recipe(formula):
     return re.sub(r"\n  bottle do\n.*?^  end\n", "", formula, flags=re.MULTILINE | re.DOTALL)
 
 
+def formula_version(formula):
+    explicit = re.findall(r"^  version (.*)$", formula, re.MULTILINE)
+    if explicit:
+        match = re.fullmatch(r'''(["'])([0-9]+)\.([0-9]+)\.([0-9]+)\1(?:\s+#.*)?''', explicit[0]) if len(explicit) == 1 else None
+        if match:
+            return tuple(map(int, match.groups()[1:]))
+    else:
+        urls = re.findall(r'''^  url (["'])([^"'\n]+)\1(?:\s+#.*)?$''', formula, re.MULTILINE)
+        if len(urls) == 1:
+            match = re.search(r"/archive/(?:refs/tags/)?v([0-9]+)\.([0-9]+)\.([0-9]+)\.tar\.gz$", urlsplit(urls[0][1]).path)
+            if match:
+                return tuple(map(int, match.groups()))
+    raise CandidateError("Cannot determine the published Formula's stable version; declare a literal version before updating.")
+
+
 def propose(github, tag, source_sha, formula):
     main = github.api("git/ref/heads/main")["object"]["sha"]
     current = read_formula(github, main)
     if current and recipe(current["text"]) == formula:
         return dict(status="already-published")
     if current:
-        match = re.search(r"/archive/refs/tags/v([0-9]+)\.([0-9]+)\.([0-9]+)\.tar\.gz", current["text"])
         requested = tuple(map(int, tag[1:].split(".")))
-        if match and tuple(map(int, match.groups())) > requested:
+        if formula_version(current["text"]) > requested:
             raise CandidateError("A newer Formula is already published; the tap was not downgraded.")
 
     branch = BRANCH_PREFIX + tag

@@ -83,6 +83,32 @@ class Tap:
 
 
 class UpdateFormulaTests(unittest.TestCase):
+    def test_explicit_version_prevents_downgrades_for_other_source_urls(self):
+        recipe = ('class XcodeMcpkit < Formula\n'
+                  '  url "https://example.invalid/source.tar.gz"\n'
+                  '  version "2.0.0"\nend\n')
+        github = Tap(recipe)
+        with self.assertRaisesRegex(CandidateError, "not downgraded"):
+            update.propose(github, TAG, SHA, FORMULA)
+        self.assertEqual(github.writes, [])
+        github.current = recipe.replace('"2.0.0"', '"1.0.0"')
+        self.assertEqual(update.propose(github, TAG, SHA, FORMULA)["status"], "created-pr")
+
+    def test_explicit_version_takes_precedence_over_version_in_the_url(self):
+        recipe = FORMULA.replace("v1.2.3", "v9.0.0").replace("end\n", '  version "1.0.0"\nend\n')
+        self.assertEqual(update.formula_version(recipe), (1, 0, 0))
+        short_url = FORMULA.replace("/archive/refs/tags/", "/archive/")
+        self.assertEqual(update.formula_version(short_url), (1, 2, 3))
+
+    def test_unreadable_current_versions_stop_before_writing_a_proposal(self):
+        for recipe in ('class XcodeMcpkit < Formula\n  url "https://example.invalid/latest.tar.gz"\nend\n',
+                       FORMULA.replace("end\n", '  version read_version()\nend\n')):
+            with self.subTest(recipe=recipe):
+                github = Tap(recipe)
+                with self.assertRaisesRegex(CandidateError, "Cannot determine"):
+                    update.propose(github, TAG, SHA, FORMULA)
+                self.assertEqual(github.writes, [])
+
     def prepared(self, source=None, tag=TAG, sha=SHA, source_digest=SOURCE_DIGEST, formula_digest=DIGEST):
         with patch.object(update, "urlopen", return_value=io.BytesIO(ARCHIVE)):
             return update.prepared_formula(source or Source(), tag, sha, source_digest, formula_digest)
