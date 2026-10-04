@@ -41,6 +41,22 @@ class FakeNative(FakeGitHub):
 
 
 class DispatchedCITests(unittest.TestCase):
+    def test_explicit_dispatch_does_not_adopt_a_head_that_changes_between_reads(self):
+        github = FakeNative()
+        original = github.api
+        reads = 0
+        def api(path, method="GET", data=None):
+            nonlocal reads
+            if path == "pulls/3":
+                reads += 1
+                if reads == 2:
+                    github.pull["head"]["sha"] = "b" * 40
+            return original(path, method, data)
+        github.api = api
+        with self.assertRaises(ci.CandidateError):
+            ci.dispatch(github, number=3, head_sha=SHA)
+        self.assertEqual(github.writes, [])
+
     def test_direct_release_proposal_uses_the_existing_pinned_bottle_ci(self):
         github = FakeNative()
         github.pull["head"]["ref"] = "codex/release-xcode-mcpkit-v1.2.3"

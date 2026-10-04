@@ -44,6 +44,7 @@ class Tap:
         self.proposed = None
         self.pulls = []
         self.writes = []
+        self.ancestor = False
 
     def pages(self, path):
         if path.startswith("pulls?state=all&base=main&head="):
@@ -55,6 +56,8 @@ class Tap:
             self.writes.append((path, method, data))
         if path == "git/ref/heads/main":
             return dict(object=dict(sha=MAIN))
+        if path.startswith("compare/"):
+            return dict(status="ahead" if self.ancestor else "diverged")
         if path.startswith("contents/Formula?ref="):
             value = self.current if path.endswith(MAIN) else self.proposed
             return [dict(path=update.FORMULA)] if value else []
@@ -132,6 +135,14 @@ class UpdateFormulaTests(unittest.TestCase):
         with self.assertRaises(CandidateError):
             update.propose(github, TAG, SHA, FORMULA)
         self.assertEqual(github.writes, [])
+
+    def test_unrelated_main_advances_do_not_block_an_untouched_release_branch(self):
+        github = Tap(FORMULA.replace("v1.2.3", "v1.2.2"))
+        github.branch = "d" * 40
+        github.proposed = github.current
+        github.ancestor = True
+        self.assertEqual(update.propose(github, TAG, SHA, FORMULA)["status"], "created-pr")
+        self.assertEqual(github.proposed, FORMULA)
 
     def test_changed_or_closed_proposal_is_not_overwritten(self):
         for closed in (False, True):

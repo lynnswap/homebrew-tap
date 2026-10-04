@@ -34,16 +34,19 @@ def native_proposal(github, number, head_sha):
 def dispatch(github, dry_run=False, number=None, head_sha=None):
     workflow = github.api("actions/workflows/tests.yml")
     values = []
-    if number is not None:
-        native_proposal(github, number, head_sha)
+    requested_head = head_sha
+    specific = number is not None
     pulls = [github.api(f"pulls/{number}")] if number is not None else github.pages("pulls?state=open&base=main")
     for pull in pulls:
-        if pull["user"]["login"] != "github-actions[bot]" or not native_branch(pull["head"]["ref"]):
+        if not specific and (pull["user"]["login"] != "github-actions[bot]" or not native_branch(pull["head"]["ref"])):
             continue
-        number, head_sha = pull["number"], pull["head"]["sha"]
+        number = pull["number"]
+        head_sha = requested_head if specific else pull["head"]["sha"]
         try:
             native_proposal(github, number, head_sha)
         except CandidateError as error:
+            if specific:
+                raise
             values.append(dict(pull_request=number, head_sha=head_sha, status="ineligible", reason=str(error)))
             continue
         runs = matching_runs(github, workflow["id"], number, head_sha)

@@ -88,7 +88,9 @@ def propose(github, tag, source_sha, formula):
         existing = read_formula(github, ref["object"]["sha"])
         # Resume a request interrupted after the Formula commit, without rewriting it.
         if existing and existing["text"] != formula and ref["object"]["sha"] != main:
-            raise CandidateError("The release branch contains a different Formula; inspect it before retrying.")
+            comparison = github.api(f"compare/{ref['object']['sha']}...{main}")
+            if comparison["status"] != "ahead":
+                raise CandidateError("The release branch contains a different Formula; inspect it before retrying.")
     if existing is None or existing["text"] != formula:
         data = dict(message=f"feat: release xcode-mcpkit {tag}", branch=branch,
                     content=base64.b64encode(formula.encode()).decode())
