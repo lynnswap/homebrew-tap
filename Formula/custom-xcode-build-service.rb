@@ -1,13 +1,13 @@
 class CustomXcodeBuildService < Formula
   desc "Select a custom Swift Build service for Xcode"
   homepage "https://github.com/lynnswap/swift-build"
-  url "https://github.com/lynnswap/swift-build/archive/refs/tags/v0.3.3.tar.gz"
-  sha256 "e860fa04f92718e0466fff6bd94cfda49707d9a842f2b957d06c4745bebfbd65"
+  url "https://github.com/lynnswap/swift-build/archive/refs/tags/v0.3.4.tar.gz"
+  sha256 "1ef6e5be89f7611d61f5babf9f8a9859acc5d919b1a9d3a16635b1026183b7aa"
   license "Apache-2.0" => { with: "Swift-exception" }
 
   bottle do
-    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/custom-xcode-build-service-0.3.2"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe: "771dccbe284e32e0fe5724668e37d2bfda826e95dfffd927036517b3cc163535"
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/custom-xcode-build-service-0.3.4"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "96d5b252e7f2fcdb8f52675b10c4cc3d2d00c3fb3da0230df31959ba10d78412"
   end
 
   depends_on "python@3.14" => [:build, :test]

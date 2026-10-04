@@ -1,13 +1,13 @@
 class Privateheaderkit < Formula
   desc "Generate searchable private headers and symbol lists for Apple platforms"
   homepage "https://github.com/lynnswap/PrivateHeaderKit"
-  url "https://github.com/lynnswap/PrivateHeaderKit/archive/refs/tags/v0.7.1.tar.gz"
-  sha256 "d4a8eb78003999b0f09702593d87cb606e24e6e513cedf2d6b63f989734aef9c"
+  url "https://github.com/lynnswap/PrivateHeaderKit/archive/refs/tags/v0.8.0.tar.gz"
+  sha256 "ce1359c1adb6b4654267dc409ac5bcd74c9084ae88809bc52c2d39eb73d4bf51"
   license "MIT"
 
   bottle do
-    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/privateheaderkit-0.7.1"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe: "dbc1dba49eb164803e5b4c17e482b50d3d1c9909a9760d382da57a1aff483f7f"
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/privateheaderkit-0.8.0"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "bc1b8bfccfccf7b42ca03da156ae5d029f4893b6cebf1839fe73333efdd5052f"
   end
 
   depends_on xcode: ["26.4", :build]
