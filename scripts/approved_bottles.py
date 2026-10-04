@@ -120,7 +120,8 @@ def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
         raise CandidateError("The Formula pull request must target main.")
     if pull["head"]["sha"] != head_sha:
         raise CandidateError("The PR head changed; review and approve its current revision.")
-    if not formula_changes(github.pages(f"pulls/{number}/files")):
+    files = github.pages(f"pulls/{number}/files")
+    if not formula_changes(files):
         raise CandidateError("Bottle publication accepts only added or modified Formula files.")
 
     workflow = github.api("actions/workflows/tests.yml")
@@ -190,6 +191,7 @@ def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
         "artifact_id": artifact["id"],
         "artifact_name": name,
         "artifact_digest": artifact["digest"],
+        "requires_signing": any(item["filename"] == "Formula/xcode-mcpkit.rb" for item in files),
     }
 
 
@@ -208,7 +210,7 @@ def write_outputs(path, value):
             output.write(f"eligible={'true' if value else 'false'}\n")
             if value:
                 for key, item in value.items():
-                    output.write(f"{key}={item}\n")
+                    output.write(f"{key}={str(item).lower() if isinstance(item, bool) else item}\n")
                 output.write(f"candidate_digest={fingerprint(value)}\n")
 
 
@@ -216,12 +218,14 @@ def summarize(value):
     if path := os.environ.get("GITHUB_STEP_SUMMARY"):
         repository = value["repository"]
         with Path(path).open("a") as summary:
-            summary.write("## Tested bottles ready for automatic publication\n\n")
+            summary.write("## Tested bottles ready for signing approval\n\n" if value["requires_signing"] else "## Tested bottles ready for automatic publication\n\n")
             summary.write(f"[Formula PR #{value['pull_request']}](https://github.com/{repository}/pull/{value['pull_request']})\n\n")
             summary.write(f"Reviewed head: `{value['head_sha']}`\n\n")
             summary.write(f"[Successful CI run](https://github.com/{repository}/actions/runs/{value['ci_run_id']}) (attempt {value['ci_attempt']})\n\n")
             summary.write(f"[Bottle artifact](https://github.com/{repository}/actions/runs/{value['ci_run_id']}/artifacts/{value['artifact_id']})\n\n")
             summary.write(f"Artifact digest: `{value['artifact_digest']}`\n\n")
+            if value["requires_signing"]:
+                summary.write("Approve `release-signing` to use the Developer ID and notarization keys on this exact tested artifact. After signing and a separate installation test, publication and Formula merge run automatically.\n\n")
             summary.write("The publisher revalidates this same-repository maintainer/bot Formula revision and exact tested artifact before automatic publication.\n")
 
 

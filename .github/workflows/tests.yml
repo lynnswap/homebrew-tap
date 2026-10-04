@@ -229,11 +229,11 @@ jobs:
           tap_root="$(brew --repository lynnswap/tap)"
           git -C "$tap_root" fetch origin "$HEAD_SHA"
           git -C "$tap_root" checkout --detach "$HEAD_SHA"
+          brew trust --formula "$formula"
           brew bottle --merge --write --no-commit "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle.json
           cache="$(brew --cache --force-bottle "$formula")"
           mkdir -p "$(dirname "$cache")"
           cp "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle*.tar.gz "$cache"
-          brew trust --formula "$formula"
           brew install "$formula"
           version="$(brew info --json=v2 "$formula" | python3 -c '
           import json, sys

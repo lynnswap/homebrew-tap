@@ -45,6 +45,7 @@ jobs:
       pull-requests: read
     outputs:
       eligible: ${{ steps.candidate.outputs.eligible }}
+      requires_signing: ${{ steps.candidate.outputs.requires_signing }}
       pull_request: ${{ steps.candidate.outputs.pull_request }}
       head_sha: ${{ steps.candidate.outputs.head_sha }}
       ci_run_id: ${{ steps.candidate.outputs.ci_run_id }}
@@ -78,9 +79,134 @@ jobs:
               --event-file "$GITHUB_EVENT_PATH" --github-output "$GITHUB_OUTPUT"
           fi
 
-  pr-pull:
+  sign-xcodemcpkit:
     needs: validate
-    if: needs.validate.outputs.eligible == 'true'
+    if: needs.validate.outputs.eligible == 'true' && needs.validate.outputs.requires_signing == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    environment: release-signing
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      artifact_id: ${{ steps.signed.outputs.artifact-id }}
+    steps:
+      - name: Check out trusted signing scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - name: Revalidate the tested publication candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ needs.validate.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
+          CANDIDATE_DIGEST: ${{ needs.validate.outputs.candidate_digest }}
+          CURRENT_CI_RUN: ${{ inputs.ci_run_id }}
+          OWN_RUN: ${{ github.run_id }}
+        run: |
+          args=()
+          if [[ -n "$CURRENT_CI_RUN" ]]; then
+            test "$CURRENT_CI_RUN" = "$OWN_RUN"
+            args+=(--current-ci-run "$CURRENT_CI_RUN")
+          fi
+          python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --candidate-digest "$CANDIDATE_DIGEST" "${args[@]}"
+      - name: Download the approved unsigned artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact_id }}
+          run-id: ${{ needs.validate.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/unsigned-bottles
+          digest-mismatch: error
+      - name: Sign and notarize without executing the bottle
+        shell: bash -euo pipefail {0}
+        env:
+          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          NOTARY_API_KEY_ID: ${{ vars.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ vars.NOTARY_API_ISSUER_ID }}
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_API_PRIVATE_KEY: ${{ secrets.NOTARY_API_PRIVATE_KEY }}
+        run: |
+          python3 scripts/sign_bottles.py sign --input "$RUNNER_TEMP/unsigned-bottles" \
+            --output "$RUNNER_TEMP/signed-bottles"
+      - name: Upload the signed bottle artifact
+        id: signed
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed_bottles_${{ github.run_id }}_${{ github.run_attempt }}
+          path: ${{ runner.temp }}/signed-bottles/*.bottle.*
+          if-no-files-found: error
+          retention-days: 35
+
+  verify-signed-xcodemcpkit:
+    needs: [validate, sign-xcodemcpkit]
+    if: needs.validate.outputs.requires_signing == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_AUTOREMOVE: '1'
+    steps:
+      - name: Check out trusted verification scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Preserve the trusted signature verifier
+        run: cp scripts/sign_bottles.py "$RUNNER_TEMP/verify-signature.py"
+      - uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+        with:
+          token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.sign-xcodemcpkit.outputs.artifact_id }}
+          path: ${{ runner.temp }}/bottles
+          digest-mismatch: error
+      - name: Install and verify the signed bottle
+        env:
+          HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
+        run: |
+          formula=lynnswap/tap/xcode-mcpkit
+          tap_root="$(brew --repository lynnswap/tap)"
+          git -C "$tap_root" fetch origin "$HEAD_SHA"
+          git -C "$tap_root" checkout --detach "$HEAD_SHA"
+          brew trust --formula "$formula"
+          brew bottle --merge --write --no-commit "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle.json
+          cache="$(brew --cache --force-bottle "$formula")"
+          mkdir -p "$(dirname "$cache")"
+          cp "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle*.tar.gz "$cache"
+          brew install "$formula"
+          version="$(brew info --json=v2 "$formula" | python3 -c '
+          import json, sys
+          formula = json.load(sys.stdin)["formulae"][0]
+          if not formula["installed"][0]["poured_from_bottle"]:
+              sys.exit("Verification expected the signed bottle.")
+          print(formula["versions"]["stable"])
+          ')"
+          prefix="$(brew --prefix "$formula")"
+          APPLE_TEAM_ID=58KPFKMJJW "$(brew --prefix python@3.14)/bin/python3.14" \
+            "$RUNNER_TEMP/verify-signature.py" verify-install --prefix "$prefix"
+          brew test "$formula"
+          "$(brew --prefix python@3.14)/bin/python3.14" \
+            "$prefix/share/xcode-mcpkit/smoke-homebrew.py" --prefix "$prefix" --version "v$version"
+
+  pr-pull:
+    needs: [validate, sign-xcodemcpkit, verify-signed-xcodemcpkit]
+    if: >-
+      always() && needs.validate.outputs.eligible == 'true' &&
+      (needs.validate.outputs.requires_signing != 'true' || needs.verify-signed-xcodemcpkit.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: homebrew-publish
@@ -103,8 +229,8 @@ jobs:
       - name: Download the approved tested artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          artifact-ids: ${{ needs.validate.outputs.artifact_id }}
-          run-id: ${{ needs.validate.outputs.ci_run_id }}
+          artifact-ids: ${{ needs.sign-xcodemcpkit.outputs.artifact_id || needs.validate.outputs.artifact_id }}
+          run-id: ${{ needs.sign-xcodemcpkit.outputs.artifact_id && github.run_id || needs.validate.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/approved-bottles
           digest-mismatch: error

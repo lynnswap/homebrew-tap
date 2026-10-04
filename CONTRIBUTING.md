@@ -48,8 +48,10 @@ from the same-repository maintainer/bot PR and its successful CI run. Review the
 head SHA, CI run/attempt, and exact bottle artifact digest in the Actions summary.
 The tested candidate is published automatically; the `homebrew-publish`
 Environment retains its main-only branch policy without a required reviewer.
-Human deployment approval is required only in the owning source repository,
-before its App private key is used to start the immediate tap update.
+The owning source repository requires approval before using its GitHub App key
+to start a tap update. XcodeMCPKit also requires `release-signing` approval in
+this tap before Developer ID and notarization keys are used; Formula publication
+and merge remain automatic after the signed bottle passes installation checks.
 
 The publisher revalidates that candidate, downloads the exact tested artifact and
 checks the Formula against Homebrew's tested recipe before uploading bottles and
@@ -68,7 +70,18 @@ retained for 35 days.
 In **Settings → Environments → homebrew-publish**, allow only `main` and leave
 required reviewers and wait timers empty. Build and validation jobs are read-only;
 only the publication job receives Contents write, attestation, and identity-token
-permissions. No additional token or Environment secret is needed.
+permissions. Publication does not require an additional token or secret.
+
+For XcodeMCPKit, configure a separate `release-signing` Environment with a required
+maintainer reviewer, `main` as its only deployment branch, and administrator
+bypass disabled. The sole maintainer may approve their own run. Set secrets
+`DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, and
+`NOTARY_API_PRIVATE_KEY`; set variables `APPLE_TEAM_ID` (`58KPFKMJJW`),
+`NOTARY_API_KEY_ID`, and `NOTARY_API_ISSUER_ID`. Build, PR, and installation jobs
+never receive these secrets. The signing job checks out trusted workflow scripts,
+revalidates the approved artifact, and handles its payload only as data. It imports
+the certificate into a temporary keychain and removes its credentials before
+uploading the signed artifact.
 
 Only same-repository PRs authored by `lynnswap` or `github-actions[bot]` can enter
 CI and publication. Fork PRs and other authors are rejected even if a CI completion
@@ -102,8 +115,20 @@ bottle tag. It does not run the custom build service's retagging or macOS 26 tes
 Its Formula checks the installed CLI versions, options, and native signature.
 A separate read-only job installs the built bottle and exercises direct and
 proxy MCP sessions against a disposable project outside Homebrew's test sandbox.
-The ordinary tap publisher requires that job to succeed, then
-uploads the tested bottle and merges the PR without another deployment approval.
+After that job succeeds, review the exact artifact ID and SHA-256 digest in the
+publication summary and approve `release-signing`. The signing job signs both
+commands, nested Swift libraries, and the helper, submits the payload to Apple,
+and staples the accepted ticket to the app. The helper keeps signing identifier
+`com.lynnswap.XcodeMCPNativeHost` so Xcode recognizes it across upgrades.
+
+A separate job installs the signed bottle, checks Developer ID, Team ID, hardened
+runtime, and notarization, and repeats the native/proxy smoke tests. The publisher
+then uploads that exact signed artifact and merges the Formula PR automatically.
+The bottle must have `any_skip_relocation`: relocation could invalidate the
+Developer ID signature. Other Formulae retain their existing publication path.
+A retry can reuse the tested raw bottle; if signing runs again it requires a new
+Environment approval. Rerunning only failed downstream jobs preserves the signed
+artifact from the successful signing job.
 
 The updater uses this tap's `GITHUB_TOKEN` for its PR. Repeated source requests
 reuse the open matching proposal and its CI, while a changed or closed proposal

@@ -73,7 +73,9 @@ class ApprovedBottlesTests(unittest.TestCase):
             guard.candidate(github, 3, SHA, current_ci_run=100)
         github.jobs.append(dict(name="Install the XcodeMCPKit bottle", id=90, run_attempt=1,
                                 status="completed", conclusion="success"))
-        self.assertEqual(guard.candidate(github, 3, SHA, current_ci_run=100)["ci_run_id"], 100)
+        value = guard.candidate(github, 3, SHA, current_ci_run=100)
+        self.assertEqual(value["ci_run_id"], 100)
+        self.assertTrue(value["requires_signing"])
         github.jobs[-1]["conclusion"] = "failure"
         with self.assertRaisesRegex(guard.CandidateError, "checks must succeed"):
             guard.candidate(github, 3, SHA, current_ci_run=100)
@@ -155,6 +157,7 @@ class ApprovedBottlesTests(unittest.TestCase):
             "repository": github.repository, "pull_request": 3, "head_sha": SHA,
             "ci_run_id": 100, "ci_attempt": 1, "artifact_id": 7,
             "artifact_name": "bottles_macos-arm64_100_1", "artifact_digest": "sha256:" + "c" * 64,
+            "requires_signing": False,
         })
         guard.verify_approved(value, guard.fingerprint(value))
 
