@@ -31,6 +31,8 @@ class FakeGitHub:
         self.runs = [self.run]
         self.artifacts = [{"id": 7, "name": "bottles_macos-arm64_100_1", "expired": False,
                            "digest": "sha256:" + "c" * 64}]
+        self.jobs = [dict(name=name,id=i,run_attempt=1,status="completed",conclusion="success")
+                     for i,name in enumerate(["guard-contracts", "select-builder", "test-bot"])]
         self.calls = []
         self.associated = [dict(self.pull, number=3)]
 
@@ -52,6 +54,8 @@ class FakeGitHub:
             return copy.deepcopy(self.files)
         if path == "actions/workflows/40/runs?event=workflow_dispatch" and field == "workflow_runs":
             return [copy.deepcopy(item) for item in self.runs if item["event"] == "workflow_dispatch"]
+        if path == "actions/runs/100/jobs?filter=all" and field == "jobs":
+            return copy.deepcopy(self.jobs)
         if path == "actions/runs/100/artifacts" and field == "artifacts":
             return copy.deepcopy(self.artifacts)
         if path == f"commits/{SHA}/pulls":
@@ -87,6 +91,48 @@ class ApprovedBottlesTests(unittest.TestCase):
         github = FakeGitHub()
         github.pull["user"]["login"] = "github-actions[bot]"
         self.assertEqual(guard.candidate(github, 3, SHA)["pull_request"], 3)
+
+    def test_final_ci_job_can_publish_after_its_producer_checks_finish(self):
+        github = FakeGitHub()
+        github.run.update(event="workflow_dispatch", head_branch="main", status="in_progress", conclusion=None,
+                          display_title=f"Bottle CI for PR 3 at {SHA}")
+        names = ["guard-contracts", "select-builder", "test-bot", "Install the custom service bottle on macOS 26"]
+        github.jobs = [dict(name=name,id=i,run_attempt=1,status="completed",conclusion="success") for i,name in enumerate(names)]
+        github.files[0]['filename'] = 'Formula/custom-xcode-build-service.rb'
+        original = guard.candidate(github,3,SHA,current_ci_run=100)
+        self.assertEqual(original['ci_run_id'],100)
+        github.run['run_attempt'] = 2
+        self.assertEqual(guard.candidate(github,3,SHA,current_ci_run=100), original)
+        for name in names:
+            with self.subTest(name=name):
+                bad = copy.deepcopy(github)
+                next(job for job in bad.jobs if job['name']==name)['conclusion']='failure'
+                with self.assertRaisesRegex(guard.CandidateError,'checks must succeed'):
+                    guard.candidate(bad,3,SHA,current_ci_run=100)
+        with self.assertRaisesRegex(guard.CandidateError,'belong to'):
+            guard.candidate(github,3,SHA,current_ci_run=101)
+        with self.assertRaisesRegex(guard.CandidateError,'finish successfully'):
+            guard.candidate(github,3,SHA)
+        old = copy.deepcopy(github.jobs[-1])
+        old.update(id=99,run_attempt=2,conclusion='failure')
+        github.jobs.append(old)
+        with self.assertRaisesRegex(guard.CandidateError,'checks must succeed'):
+            guard.candidate(github,3,SHA,current_ci_run=100)
+
+    def test_standalone_retry_reuses_passed_producers_after_only_publication_failed(self):
+        github = FakeGitHub()
+        github.run.update(event="workflow_dispatch", head_branch="main", status="completed", conclusion="failure",
+                          run_attempt=2, display_title=f"Bottle CI for PR 3 at {SHA}")
+        github.jobs.append(dict(name="publish-tested-bottles / pr-pull", id=20, run_attempt=2,
+                                status="completed", conclusion="failure"))
+        self.assertEqual(guard.candidate(github,3,SHA)['ci_attempt'],1)
+        github.jobs[0]['conclusion']='failure'
+        with self.assertRaisesRegex(guard.CandidateError,'Only failed dependent publication'):
+            guard.candidate(github,3,SHA)
+        github.jobs[0]['conclusion']='success'
+        github.jobs.append(dict(name='unrelated producer',id=21,run_attempt=2,status='completed',conclusion='failure'))
+        with self.assertRaises(guard.CandidateError):
+            guard.candidate(github,3,SHA)
 
     def test_candidate_pins_reviewed_head_and_exact_tested_artifact(self):
         github = FakeGitHub()

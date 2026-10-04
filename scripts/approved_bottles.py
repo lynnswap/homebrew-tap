@@ -106,7 +106,7 @@ def matching_runs(github, workflow_id, number, head_sha):
     return sorted(runs.values(), key=lambda run: (run["created_at"], run["id"]), reverse=True)
 
 
-def candidate(github, number, head_sha, event_run_id=None):
+def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
     if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
         raise CandidateError("Supply the reviewed full lowercase PR-head SHA.")
     pull = github.api(f"pulls/{number}")
@@ -136,12 +136,39 @@ def candidate(github, number, head_sha, event_run_id=None):
         or dispatched_pull(run) == (number, head_sha)
     ):
         raise CandidateError("The selected CI run does not test this Formula head.")
-    if run["status"] != "completed" or run["conclusion"] != "success":
+    bottle_attempt = run["run_attempt"]
+    retry_failed_publisher = (current_ci_run is None and run["status"] == "completed"
+                              and run["conclusion"] == "failure"
+                              and dispatched_pull(run) == (number, head_sha))
+    if current_ci_run is not None or retry_failed_publisher:
+        if current_ci_run is not None and (run["id"] != current_ci_run or dispatched_pull(run) != (number, head_sha)):
+            raise CandidateError("In-workflow publication must belong to this canonical native CI run.")
+        # The parent run remains in progress while its final publication job runs.
+        # Require completed producer checks, including the macOS 26 bottle install.
+        jobs = {}
+        for job in github.pages(f"actions/runs/{run['id']}/jobs?filter=all", "jobs"):
+            old = jobs.get(job["name"])
+            if old is None or (job["run_attempt"], job["id"]) > (old["run_attempt"], old["id"]):
+                jobs[job["name"]] = job
+        if retry_failed_publisher:
+            failed = [job for job in jobs.values() if job.get('conclusion') in
+                      ('failure', 'cancelled', 'timed_out', 'action_required')]
+            if not failed or any(not job['name'].startswith('publish-tested-bottles / ') for job in failed):
+                raise CandidateError("Only failed dependent publication can reuse successful bottle CI.")
+        required = ["guard-contracts", "select-builder", "test-bot"]
+        if any(item['filename'] == 'Formula/custom-xcode-build-service.rb'
+               for item in github.pages(f"pulls/{number}/files")):
+            required.append("Install the custom service bottle on macOS 26")
+        if any(jobs.get(name, {}).get('status') != 'completed' or
+               jobs[name].get('conclusion') != 'success' for name in required):
+            raise CandidateError("All bottle producer and installation checks must succeed before publication.")
+        bottle_attempt = jobs["test-bot"]["run_attempt"]
+    elif run["status"] != "completed" or run["conclusion"] != "success":
         raise CandidateError("The latest bottle CI run must finish successfully before publication.")
     if number not in associated_pulls(github, run):
         raise CandidateError("The CI run is not associated with the requested pull request.")
 
-    name = f"bottles_macos-arm64_{run['id']}_{run['run_attempt']}"
+    name = f"bottles_macos-arm64_{run['id']}_{bottle_attempt}"
     artifacts = [item for item in github.pages(f"actions/runs/{run['id']}/artifacts", "artifacts")
                  if item["name"] == name]
     if len(artifacts) != 1:
@@ -156,7 +183,7 @@ def candidate(github, number, head_sha, event_run_id=None):
         "pull_request": number,
         "head_sha": head_sha,
         "ci_run_id": run["id"],
-        "ci_attempt": run["run_attempt"],
+        "ci_attempt": bottle_attempt,
         "artifact_id": artifact["id"],
         "artifact_name": name,
         "artifact_digest": artifact["digest"],
@@ -202,6 +229,7 @@ def main():
     parser.add_argument("--head")
     parser.add_argument("--event-file", type=Path)
     parser.add_argument("--candidate-digest")
+    parser.add_argument("--current-ci-run", type=int)
     parser.add_argument("--github-output", type=Path)
     args = parser.parse_args()
     github = GitHub(args.repo)
@@ -231,7 +259,7 @@ def main():
             if args.pr is None or args.head is None:
                 raise CandidateError("Supply a Formula PR and its reviewed head SHA.")
             number, head_sha = args.pr, args.head
-        value = candidate(github, number, head_sha, event_run_id)
+        value = candidate(github, number, head_sha, event_run_id, args.current_ci_run)
         if args.candidate_digest:
             verify_approved(value, args.candidate_digest)
         else:

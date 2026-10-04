@@ -33,6 +33,16 @@ and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
 
 ## Publishing bottles
 
+Native Formula CI calls **brew pr-pull** as its final dependent job after the
+producer checks and applicable macOS 26 bottle installation succeed. It does not
+rely on a `workflow_run` event to start publication for a dispatched native PR.
+Standalone publication and periodic discovery remain recovery paths for already
+completed CI. If the dependent publisher fails, a manual publication retry reuses
+its successful producer checks and original bottle artifact; real producer
+failures still require new CI. Periodic discovery does not retry real publication
+failures automatically. The final job verifies the canonical parent run, completed producer
+checks, PR head, and immutable artifact before any publication side effects.
+
 After Formula PR checks pass, **brew pr-pull** prepares a publication candidate
 from the same-repository maintainer/bot PR and its successful CI run. Review the
 head SHA, CI run/attempt, and exact bottle artifact digest in the Actions summary.

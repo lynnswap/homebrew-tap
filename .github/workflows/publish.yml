@@ -3,6 +3,17 @@ name: brew pr-pull
 run-name: ${{ github.event_name == 'workflow_dispatch' && format('Publish bottles for PR {0} at {1}', inputs.pull_request, inputs.head_sha) || format('Publish bottles from CI {0} attempt {1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) }}
 
 on:
+  workflow_call:
+    inputs:
+      pull_request:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+      ci_run_id:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       pull_request:
@@ -51,8 +62,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_PR: ${{ inputs.pull_request }}
           INPUT_HEAD: ${{ inputs.head_sha }}
+          CURRENT_CI_RUN: ${{ inputs.ci_run_id }}
+          OWN_RUN: ${{ github.run_id }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+          if [[ -n "$CURRENT_CI_RUN" ]]; then
+            test "$CURRENT_CI_RUN" = "$OWN_RUN"
+            python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
+              --pr "$INPUT_PR" --head "$INPUT_HEAD" --current-ci-run "$CURRENT_CI_RUN" \
+              --github-output "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
               --pr "$INPUT_PR" --head "$INPUT_HEAD" --github-output "$GITHUB_OUTPUT"
           else
@@ -96,9 +114,16 @@ jobs:
           PULL_REQUEST: ${{ needs.validate.outputs.pull_request }}
           HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
           CANDIDATE_DIGEST: ${{ needs.validate.outputs.candidate_digest }}
+          CURRENT_CI_RUN: ${{ inputs.ci_run_id }}
+          OWN_RUN: ${{ github.run_id }}
         run: |
+          args=()
+          if [[ -n "$CURRENT_CI_RUN" ]]; then
+            test "$CURRENT_CI_RUN" = "$OWN_RUN"
+            args+=(--current-ci-run "$CURRENT_CI_RUN")
+          fi
           python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
-            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --candidate-digest "$CANDIDATE_DIGEST"
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --candidate-digest "$CANDIDATE_DIGEST" "${args[@]}"
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
         with:

@@ -192,3 +192,21 @@ jobs:
           python3 "$prefix/share/custom-xcode-build-service/verify.py" verify-payload \
             --payload "$prefix/libexec" \
             --fixture-dir "$prefix/share/custom-xcode-build-service/CommandLineTool"
+
+  publish-tested-bottles:
+    needs: [guard-contracts, test-bot, install-custom-service]
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      needs.guard-contracts.result == 'success' && needs.test-bot.result == 'success' &&
+      (needs.install-custom-service.result == 'success' || needs.install-custom-service.result == 'skipped')
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+      pull-requests: read
+    uses: ./.github/workflows/publish.yml
+    with:
+      pull_request: ${{ inputs.pull_request }}
+      head_sha: ${{ inputs.head_sha }}
+      ci_run_id: ${{ github.run_id }}
