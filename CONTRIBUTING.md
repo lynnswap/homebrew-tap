@@ -99,8 +99,10 @@ The first release uses this same path; no placeholder Formula is needed.
 The updater starts the existing read-only bottle workflow with the PR number and
 full head SHA. XcodeMCPKit builds on `xcode-27` and keeps the builder's native
 bottle tag. It does not run the custom build service's retagging or macOS 26 test.
-Its Formula checks the installed CLI versions, native signature, and direct and
-proxy MCP sessions against a disposable project. The ordinary tap publisher then
+Its Formula checks the installed CLI versions, options, and native signature.
+A separate read-only job installs the built bottle and exercises direct and
+proxy MCP sessions against a disposable project outside Homebrew's test sandbox.
+The ordinary tap publisher requires that job to succeed, then
 uploads the tested bottle and merges the PR without another deployment approval.
 
 The updater uses this tap's `GITHUB_TOKEN` for its PR. Repeated source requests

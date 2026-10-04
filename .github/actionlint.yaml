@@ -1,3 +1,7 @@
+self-hosted-runner:
+  # GitHub-hosted preview image: https://github.com/actions/runner-images/issues/14404
+  labels:
+    - xcode-27
 paths:
   # Homebrew passes tap paths outside the workspace symlink; match that prefix.
   '**/.github/workflows/*.yml':

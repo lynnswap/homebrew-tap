@@ -24,7 +24,8 @@ def builder(files):
         raise CandidateError("Submit Formulae requiring different build environments in separate PRs.")
     runner = next(iter(runners), "macos-26")
     return dict(runner=runner, developer_dir=BUILDERS[runner],
-                custom_service="true" if "Formula/custom-xcode-build-service.rb" in paths else "false")
+                custom_service="true" if "Formula/custom-xcode-build-service.rb" in paths else "false",
+                xcode_mcpkit="true" if "Formula/xcode-mcpkit.rb" in paths else "false")
 
 
 def main():

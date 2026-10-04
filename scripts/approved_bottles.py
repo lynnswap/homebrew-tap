@@ -159,6 +159,9 @@ def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
         if any(item['filename'] == 'Formula/custom-xcode-build-service.rb'
                for item in github.pages(f"pulls/{number}/files")):
             required.append("Install the custom service bottle on macOS 26")
+        if any(item['filename'] == 'Formula/xcode-mcpkit.rb'
+               for item in github.pages(f"pulls/{number}/files")):
+            required.append("Install the XcodeMCPKit bottle")
         if any(jobs.get(name, {}).get('status') != 'completed' or
                jobs[name].get('conclusion') != 'success' for name in required):
             raise CandidateError("All bottle producer and installation checks must succeed before publication.")
