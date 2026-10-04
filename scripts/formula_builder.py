@@ -15,14 +15,17 @@ BUILDERS = {
 
 
 def builder(files):
+    paths = {item["filename"] for item in files if formula_path(item["filename"]) and item["status"] != "removed"}
     runners = {
-        "xcode-27" if item["filename"] == "Formula/custom-xcode-build-service.rb" else "macos-26"
-        for item in files if formula_path(item["filename"]) and item["status"] != "removed"
+        "xcode-27" if path in ("Formula/custom-xcode-build-service.rb", "Formula/xcode-mcpkit.rb") else "macos-26"
+        for path in paths
     }
     if len(runners) > 1:
         raise CandidateError("Submit Formulae requiring different build environments in separate PRs.")
     runner = next(iter(runners), "macos-26")
-    return dict(runner=runner, developer_dir=BUILDERS[runner])
+    return dict(runner=runner, developer_dir=BUILDERS[runner],
+                custom_service="true" if "Formula/custom-xcode-build-service.rb" in paths else "false",
+                xcode_mcpkit="true" if "Formula/xcode-mcpkit.rb" in paths else "false")
 
 
 def main():

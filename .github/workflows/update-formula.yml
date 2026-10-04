@@ -1,0 +1,88 @@
+name: Update approved source Formula
+
+run-name: Update ${{ inputs.source_repository }} ${{ inputs.source_tag }} at ${{ inputs.source_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Registered source repository
+        required: true
+        type: string
+      source_tag:
+        description: Public stable source tag
+        required: true
+        type: string
+      source_sha:
+        description: Approved source commit
+        required: true
+        type: string
+      source_sha256:
+        description: Prepared public source archive SHA-256
+        required: true
+        type: string
+      formula_sha256:
+        description: Prepared Formula SHA-256
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: approved-formula-${{ inputs.source_repository }}
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pull_request: ${{ steps.formula.outputs.pull_request }}
+      head_sha: ${{ steps.formula.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Verify and propose the prepared source recipe
+        id: formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_SHA256: ${{ inputs.source_sha256 }}
+          FORMULA_SHA256: ${{ inputs.formula_sha256 }}
+        run: |
+          python3 scripts/update_formula.py --repo "$GITHUB_REPOSITORY" \
+            --source-repository "$SOURCE_REPOSITORY" --source-tag "$SOURCE_TAG" \
+            --source-sha "$SOURCE_SHA" --source-sha256 "$SOURCE_SHA256" \
+            --formula-sha256 "$FORMULA_SHA256" --github-output "$GITHUB_OUTPUT"
+
+  dispatch-ci:
+    needs: update
+    if: needs.update.outputs.pull_request != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Start bottle CI for the exact release proposal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ needs.update.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.update.outputs.head_sha }}
+        run: |
+          python3 scripts/dispatched_ci.py dispatch --repo "$GITHUB_REPOSITORY" \
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA"

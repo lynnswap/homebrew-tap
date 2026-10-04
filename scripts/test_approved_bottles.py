@@ -64,6 +64,20 @@ class FakeGitHub:
 
 
 class ApprovedBottlesTests(unittest.TestCase):
+    def test_xcodemcpkit_publication_requires_the_installed_bottle_smoke_test(self):
+        github = FakeGitHub()
+        github.files = [dict(filename="Formula/xcode-mcpkit.rb", status="added")]
+        github.run.update(event="workflow_dispatch", head_branch="main", status="in_progress", conclusion=None,
+                          display_title=f"Bottle CI for PR 3 at {SHA}")
+        with self.assertRaisesRegex(guard.CandidateError, "checks must succeed"):
+            guard.candidate(github, 3, SHA, current_ci_run=100)
+        github.jobs.append(dict(name="Install the XcodeMCPKit bottle", id=90, run_attempt=1,
+                                status="completed", conclusion="success"))
+        self.assertEqual(guard.candidate(github, 3, SHA, current_ci_run=100)["ci_run_id"], 100)
+        github.jobs[-1]["conclusion"] = "failure"
+        with self.assertRaisesRegex(guard.CandidateError, "checks must succeed"):
+            guard.candidate(github, 3, SHA, current_ci_run=100)
+
     def test_trusted_dispatch_binds_server_inputs_instead_of_mutable_pr_metadata(self):
         github = FakeGitHub()
         github.run.update(event="workflow_dispatch", head_sha="b" * 40, head_branch="main",
