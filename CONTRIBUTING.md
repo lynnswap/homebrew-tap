@@ -64,7 +64,8 @@ Only same-repository PRs authored by `lynnswap` or `github-actions[bot]` can ent
 CI and publication. Fork PRs and other authors are rejected even if a CI completion
 or manual publication request is received. This also excludes Dependabot proposals.
 The public tap remains forkable; a fork is never an accepted publication source.
-Repository rules restrict branch changes to `lynnswap` and GitHub Actions.
+The sole repository collaborator with write access is `lynnswap`; GitHub Actions
+receives write permission only in its trusted maintenance/publication jobs.
 GitHub's collaborators-only interaction limit expires after six months; the CI
 and publication policy remains in code after that limit expires.
 
