@@ -41,6 +41,15 @@ class FakeNative(FakeGitHub):
 
 
 class DispatchedCITests(unittest.TestCase):
+    def test_direct_release_proposal_uses_the_existing_pinned_bottle_ci(self):
+        github = FakeNative()
+        github.pull["head"]["ref"] = "codex/release-xcode-mcpkit-v1.2.3"
+        github.files = [dict(filename="Formula/xcode-mcpkit.rb", status="added")]
+        self.assertEqual(ci.dispatch(github, number=3, head_sha=SHA)[0]["status"], "dispatched")
+        self.assertEqual(github.writes[0][1]["inputs"], dict(pull_request="3", head_sha=SHA))
+        with self.assertRaises(ci.CandidateError):
+            ci.dispatch(github, number=3, head_sha="b" * 40)
+
     def test_native_proposal_gets_trusted_main_dispatch_with_pinned_inputs(self):
         github = FakeNative()
         self.assertEqual(ci.dispatch(github)[0]["status"], "dispatched")

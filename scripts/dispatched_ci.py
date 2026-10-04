@@ -11,11 +11,16 @@ import sys
 from approved_bottles import CandidateError, GitHub, formula_changes, matching_runs
 
 
+def native_branch(branch):
+    return branch.startswith("renovate/") or bool(re.fullmatch(
+        r"codex/release-xcode-mcpkit-v[0-9]+\.[0-9]+\.[0-9]+", branch))
+
+
 def native_proposal(github, number, head_sha):
     pull = github.api(f"pulls/{number}")
     if (pull["state"] != "open" or pull.get("draft") or pull["base"]["ref"] != "main"
             or pull["user"]["login"] != "github-actions[bot]"
-            or not pull["head"]["ref"].startswith("renovate/")
+            or not native_branch(pull["head"]["ref"])
             or pull["head"]["repo"] is None or pull["head"]["repo"]["full_name"] != github.repository):
         raise CandidateError("Automatic CI accepts an open native same-repository Formula proposal only.")
     if not re.fullmatch(r"[0-9a-f]{40}", head_sha) or pull["head"]["sha"] != head_sha:
@@ -26,11 +31,14 @@ def native_proposal(github, number, head_sha):
     return files
 
 
-def dispatch(github, dry_run=False):
+def dispatch(github, dry_run=False, number=None, head_sha=None):
     workflow = github.api("actions/workflows/tests.yml")
     values = []
-    for pull in github.pages("pulls?state=open&base=main"):
-        if pull["user"]["login"] != "github-actions[bot]" or not pull["head"]["ref"].startswith("renovate/"):
+    if number is not None:
+        native_proposal(github, number, head_sha)
+    pulls = [github.api(f"pulls/{number}")] if number is not None else github.pages("pulls?state=open&base=main")
+    for pull in pulls:
+        if pull["user"]["login"] != "github-actions[bot]" or not native_branch(pull["head"]["ref"]):
             continue
         number, head_sha = pull["number"], pull["head"]["sha"]
         try:
@@ -120,6 +128,8 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     propose = commands.add_parser("dispatch")
     propose.add_argument("--dry-run", action="store_true")
+    propose.add_argument("--pr", type=int)
+    propose.add_argument("--head")
     pin = commands.add_parser("prepare")
     pin.add_argument("--pr", type=int, required=True)
     pin.add_argument("--head", required=True)
@@ -131,7 +141,9 @@ def main():
     try:
         github = GitHub(args.repo)
         if args.command == "dispatch":
-            print(json.dumps(dispatch(github, args.dry_run)))
+            if (args.pr is None) != (args.head is None):
+                raise CandidateError("Supply both --pr and --head for a specific proposal.")
+            print(json.dumps(dispatch(github, args.dry_run, args.pr, args.head)))
         else:
             formulae = prepare(github, args.pr, args.head, args.tap_root)
             with args.github_output.open("a") as output:

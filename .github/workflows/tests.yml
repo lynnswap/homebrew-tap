@@ -48,6 +48,7 @@ jobs:
     outputs:
       runner: ${{ steps.builder.outputs.runner }}
       developer_dir: ${{ steps.builder.outputs.developer_dir }}
+      custom_service: ${{ steps.builder.outputs.custom_service }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -140,7 +141,7 @@ jobs:
           brew test-bot --only-formulae --testing-formulae="$FORMULAE" --added-formulae="$ADDED_FORMULAE"
 
       - name: Register custom service bottles for macOS 26 and later
-        if: needs.select-builder.outputs.runner == 'xcode-27' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        if: needs.select-builder.outputs.custom_service == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         run: python3 "$RUNNER_TEMP/trusted-ci/bottle_tags.py" .
 
       - name: Upload bottles as artifact
@@ -154,7 +155,7 @@ jobs:
   install-custom-service:
     name: Install the custom service bottle on macOS 26
     needs: [select-builder, test-bot]
-    if: needs.select-builder.outputs.runner == 'xcode-27' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    if: needs.select-builder.outputs.custom_service == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: macos-26
     timeout-minutes: 30
     permissions:

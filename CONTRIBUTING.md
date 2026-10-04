@@ -87,6 +87,29 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 
 ## Automated maintenance
 
+### Approved XcodeMCPKit releases
+
+XcodeMCPKit dispatches `update-formula.yml` from its approved `release-publish`
+job using a GitHub App token scoped to this tap and `Actions: write`. The request
+contains the public source tag, approved commit, source archive SHA-256, and
+prepared Formula SHA-256. The trusted updater checks those values, reproduces the
+Formula from the tagged template, and creates or reuses a native Formula PR.
+The first release uses this same path; no placeholder Formula is needed.
+
+The updater starts the existing read-only bottle workflow with the PR number and
+full head SHA. XcodeMCPKit builds on `xcode-27` and keeps the builder's native
+bottle tag. It does not run the custom build service's retagging or macOS 26 test.
+Its Formula checks the installed CLI versions, native signature, and direct and
+proxy MCP sessions against a disposable project. The ordinary tap publisher then
+uploads the tested bottle and merges the PR without another deployment approval.
+
+The updater uses this tap's `GITHUB_TOKEN` for its PR. Repeated source requests
+reuse the open matching proposal and its CI, while a changed or closed proposal
+stops with a diagnostic. XcodeMCPKit is not part of the Renovate source discovery
+or update scope. The existing tools below retain their Renovate flow.
+
+### Renovate-managed tools
+
 Dependabot proposes weekly updates to workflow actions. **Propose Homebrew
 updates** runs Renovate daily at 08:17 Japan time or on manual dispatch from
 `main`. A short read-only check also runs every 15 minutes: a newer public stable
