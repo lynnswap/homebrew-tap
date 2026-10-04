@@ -34,33 +34,39 @@ and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
 ## Publishing bottles
 
 After Formula PR checks pass, **brew pr-pull** prepares a publication candidate
-and waits for the **homebrew-publish** Environment approval. Review the PR head
-SHA, successful CI run/attempt and bottle artifact digest in the Actions summary,
-then choose **Review deployments → Approve and deploy**.
-GitHub sends a deployment-review request to the required reviewer. Enable
-deployment-review push notifications in GitHub Mobile to receive this approval
-request on a phone.
+from the same-repository maintainer/bot PR and its successful CI run. Review the
+head SHA, CI run/attempt, and exact bottle artifact digest in the Actions summary.
+The tested candidate is published automatically; the `homebrew-publish`
+Environment retains its main-only branch policy without a required reviewer.
+Human deployment approval is required only in the owning source repository,
+before its App private key is used to start the immediate tap update.
 
 The publisher revalidates that candidate, downloads the exact tested artifact and
 checks the Formula against Homebrew's tested recipe before uploading bottles and
 updating `main`. The publication merge preserves the reviewed PR head in `main`
 history so GitHub marks the PR as merged. Each push checks changes from the main
 commit recorded before that merge and binds the push to the checked remote tip.
-Concurrent changes to the same Formula require new bottle CI and approval;
+Concurrent changes to the same Formula require new bottle CI and validation;
 unrelated Formula or documentation changes can be preserved during push recovery.
 Documentation-only PRs do not publish bottles.
 
 To retry, dispatch **brew pr-pull** on `main` with the Formula PR number and its
 full reviewed head SHA. A changed head, newer or failed CI, replaced artifact or
-expired artifact requires a new candidate and approval. Bottle artifacts are
+expired artifact requires new candidate validation. Bottle artifacts are
 retained for 35 days.
 
-In **Settings → Environments → homebrew-publish**, require a maintainer reviewer,
-allow only `main` and disable administrator bypass. Leave **Prevent self-review**
-off when the sole maintainer also initiates publication. Build and validation
-jobs are read-only; only the approved publication job receives Contents write,
-attestation and identity-token permissions. No additional token or Environment
-secret is needed.
+In **Settings → Environments → homebrew-publish**, allow only `main` and leave
+required reviewers and wait timers empty. Build and validation jobs are read-only;
+only the publication job receives Contents write, attestation, and identity-token
+permissions. No additional token or Environment secret is needed.
+
+Only same-repository PRs authored by `lynnswap` or `github-actions[bot]` can enter
+CI and publication. Fork PRs and other authors are rejected even if a CI completion
+or manual publication request is received. This also excludes Dependabot proposals.
+The public tap remains forkable; a fork is never an accepted publication source.
+Repository rules restrict branch changes to `lynnswap` and GitHub Actions.
+GitHub's collaborators-only interaction limit expires after six months; the CI
+and publication policy remains in code after that limit expires.
 
 Run the publication guard tests locally with:
 
@@ -87,8 +93,8 @@ accepts only a configured source and a public stable `vX.Y.Z` tag, then checks
 whether its Formula needs a proposal. A repeated notification reuses an existing
 proposal. A valid release notification removes Renovate's hourly PR throttle for
 that run; scheduled and ordinary manual maintenance keep the configured limit.
-The existing native PR CI and `homebrew-publish` approval still own validation,
-bottle publication, and merge. Periodic discovery remains available for recovery.
+The existing native PR CI and publisher still own validation, bottle publication,
+and merge. Periodic discovery remains available for recovery.
 
 Renovate maintains `Formula/privateheaderkit.rb` and
 `Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
@@ -106,9 +112,8 @@ head SHA pinned in the server-rendered run title. This does not require a separa
 **Approve workflows to run** action. The read-only builder validates the native
 proposal, checks out that exact head and tests the named Formulae. Publication
 accepts only successful CI from the canonical workflow bound to that same PR head
-and immutable bottle artifact. Review the Formula and bottle CI when the
-`homebrew-publish` approval request arrives; the protected publisher uploads the
-tested bottles and merges the PR automatically after approval.
+and immutable bottle artifact. The publisher uploads the exact tested bottles and merges the PR automatically
+after successful CI and candidate validation.
 Discovery also starts a missing publisher for successful CI, including a bot PR
 approved before this automatic dispatch flow was installed. Existing publication
 runs and actual CI/publication failures are not repeatedly retried.

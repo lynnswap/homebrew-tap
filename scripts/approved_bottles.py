@@ -112,6 +112,10 @@ def candidate(github, number, head_sha, event_run_id=None):
     pull = github.api(f"pulls/{number}")
     if pull["state"] != "open" or pull.get("draft"):
         raise CandidateError("Select an open, ready Formula pull request.")
+    if (pull["user"]["login"] not in ("lynnswap", "github-actions[bot]")
+            or pull["head"].get("repo") is None
+            or pull["head"]["repo"]["full_name"] != github.repository):
+        raise CandidateError("Bottle publication accepts only same-repository PRs from lynnswap or GitHub Actions.")
     if pull["base"]["ref"] != "main":
         raise CandidateError("The Formula pull request must target main.")
     if pull["head"]["sha"] != head_sha:
@@ -165,7 +169,7 @@ def fingerprint(value):
 
 def verify_approved(value, expected_digest):
     if fingerprint(value) != expected_digest:
-        raise CandidateError("The reviewed head or tested artifacts changed while approval was pending; start a new approval.")
+        raise CandidateError("The tested head or artifacts changed after validation; prepare a new publication candidate.")
 
 
 def write_outputs(path, value):
@@ -182,13 +186,13 @@ def summarize(value):
     if path := os.environ.get("GITHUB_STEP_SUMMARY"):
         repository = value["repository"]
         with Path(path).open("a") as summary:
-            summary.write("## Tested bottles awaiting publication approval\n\n")
+            summary.write("## Tested bottles ready for automatic publication\n\n")
             summary.write(f"[Formula PR #{value['pull_request']}](https://github.com/{repository}/pull/{value['pull_request']})\n\n")
             summary.write(f"Reviewed head: `{value['head_sha']}`\n\n")
             summary.write(f"[Successful CI run](https://github.com/{repository}/actions/runs/{value['ci_run_id']}) (attempt {value['ci_attempt']})\n\n")
             summary.write(f"[Bottle artifact](https://github.com/{repository}/actions/runs/{value['ci_run_id']}/artifacts/{value['artifact_id']})\n\n")
             summary.write(f"Artifact digest: `{value['artifact_digest']}`\n\n")
-            summary.write("Approve the `homebrew-publish` Environment only after reviewing this Formula revision and its CI results.\n")
+            summary.write("The publisher revalidates this same-repository maintainer/bot Formula revision and exact tested artifact before automatic publication.\n")
 
 
 def main():

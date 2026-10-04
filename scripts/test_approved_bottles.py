@@ -21,7 +21,8 @@ class FakeGitHub:
     repository = "lynnswap/homebrew-tap"
 
     def __init__(self):
-        self.pull = {"state": "open", "draft": False, "base": {"ref": "main"}, "head": {"sha": SHA}}
+        self.pull = {"state": "open", "draft": False, "user": {"login": "lynnswap"},
+                     "base": {"ref": "main"}, "head": {"sha": SHA, "repo": {"full_name": self.repository}}}
         self.files = [{"filename": "Formula/privateheaderkit.rb", "status": "modified"}]
         self.run = {"id": 100, "run_attempt": 1, "workflow_id": 40, "head_sha": SHA,
                     "created_at": "2026-10-01T00:00:00Z",
@@ -71,6 +72,21 @@ class ApprovedBottlesTests(unittest.TestCase):
                 bad.run[field] = value
                 with self.assertRaises(guard.CandidateError):
                     guard.candidate(bad, 3, SHA)
+
+    def test_publication_rejects_outside_authors_and_fork_heads(self):
+        for author, repository in (("contributor", "lynnswap/homebrew-tap"),
+                                   ("dependabot[bot]", "lynnswap/homebrew-tap"),
+                                   ("lynnswap", "other/homebrew-tap")):
+            with self.subTest(author=author, repository=repository):
+                github = FakeGitHub()
+                github.pull["user"]["login"] = author
+                github.pull["head"]["repo"]["full_name"] = repository
+                with self.assertRaisesRegex(guard.CandidateError, "same-repository PRs"):
+                    guard.candidate(github, 3, SHA)
+                self.assertEqual(github.calls, ["pulls/3"])
+        github = FakeGitHub()
+        github.pull["user"]["login"] = "github-actions[bot]"
+        self.assertEqual(guard.candidate(github, 3, SHA)["pull_request"], 3)
 
     def test_candidate_pins_reviewed_head_and_exact_tested_artifact(self):
         github = FakeGitHub()
@@ -146,14 +162,14 @@ class ApprovedBottlesTests(unittest.TestCase):
                 with self.assertRaises(guard.CandidateError):
                     guard.candidate(github, 3, SHA)
 
-    def test_changed_artifacts_or_ci_attempt_require_new_approval(self):
+    def test_changed_artifacts_or_ci_attempt_require_new_validation(self):
         github = FakeGitHub()
         expected = guard.fingerprint(guard.candidate(github, 3, SHA))
         for field, new_value in [("id", 8), ("digest", "sha256:" + "d" * 64)]:
             with self.subTest(field=field):
                 github = FakeGitHub()
                 github.artifacts[0][field] = new_value
-                with self.assertRaisesRegex(guard.CandidateError, "approval was pending"):
+                with self.assertRaisesRegex(guard.CandidateError, "changed after validation"):
                     guard.verify_approved(guard.candidate(github, 3, SHA), expected)
         github = FakeGitHub()
         github.run["run_attempt"] = 2
@@ -165,7 +181,7 @@ class ApprovedBottlesTests(unittest.TestCase):
         with self.assertRaisesRegex(guard.CandidateError, "newer bottle CI"):
             guard.candidate(FakeGitHub(), 3, SHA, event_run_id=99)
 
-    def test_fork_ci_without_embedded_pr_uses_verified_commit_association(self):
+    def test_missing_embedded_pr_uses_verified_commit_association(self):
         github = FakeGitHub()
         github.run["pull_requests"] = []
         self.assertEqual(guard.candidate(github, 3, SHA)["pull_request"], 3)
@@ -173,18 +189,18 @@ class ApprovedBottlesTests(unittest.TestCase):
         with self.assertRaisesRegex(guard.CandidateError, "not associated"):
             guard.candidate(github, 3, SHA)
 
-    def test_fork_completion_can_prepare_an_approval(self):
+    def test_fork_completion_cannot_prepare_publication(self):
         github = FakeGitHub()
         github.run["pull_requests"] = []
+        github.pull["head"]["repo"]["full_name"] = "outside/homebrew-tap"
         with tempfile.TemporaryDirectory() as directory:
             event = Path(directory) / "event.json"
             output = Path(directory) / "output.txt"
             event.write_text(json.dumps({"workflow_run": github.run}))
             args = ["guard", "--repo", github.repository, "--event-file", str(event), "--github-output", str(output)]
-            with patch("sys.argv", args), patch.object(guard, "GitHub", return_value=github), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(guard.main(), 0)
-            self.assertIn("eligible=true\n", output.read_text())
-            self.assertIn("pull_request=3\n", output.read_text())
+            with patch("sys.argv", args), patch.object(guard, "GitHub", return_value=github), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(guard.main(), 1)
+            self.assertFalse(output.exists())
 
     def test_dispatched_completion_uses_the_pinned_pr_head_instead_of_main_sha(self):
         github = FakeGitHub()
