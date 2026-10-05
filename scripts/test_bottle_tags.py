@@ -58,6 +58,23 @@ class BottleTagTests(unittest.TestCase):
         register_bottles(self.directory)
         self.assertEqual(path.read_bytes(), content)
 
+    def test_xcodemcpkit_keeps_signed_bytes_and_build_record_under_macos_26_tag(self):
+        path, original = self.bottle(name="xcode-mcpkit")
+        original_entry = original["lynnswap/tap/xcode-mcpkit"]
+        old_tag = original_entry["bottle"]["tags"]["arm64_golden_gate"]
+        content = (self.directory / old_tag["local_filename"]).read_bytes()
+        register_bottles(self.directory)
+
+        entry = json.loads(next(self.directory.glob("*.bottle.json")).read_text())["lynnswap/tap/xcode-mcpkit"]
+        tag = entry["bottle"]["tags"]["arm64_tahoe"]
+        self.assertEqual((self.directory / tag["local_filename"]).read_bytes(), content)
+        self.assertEqual(tag["sha256"], hashlib.sha256(content).hexdigest())
+        self.assertEqual(tag["tab"], old_tag["tab"])
+        self.assertEqual(entry["formula"], original_entry["formula"])
+        self.assertEqual(tag["filename"], "xcode-mcpkit-0.3.1.arm64_tahoe.bottle.tar.gz")
+        self.assertFalse(path.exists())
+        self.assertFalse((self.directory / old_tag["local_filename"]).exists())
+
     def test_service_bottle_preserves_its_rebuild_number(self):
         self.bottle(rebuild=1)
         register_bottles(self.directory)

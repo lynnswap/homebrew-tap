@@ -147,9 +147,14 @@ jobs:
           retention-days: 35
 
   verify-signed-xcodemcpkit:
+    name: Verify the signed XcodeMCPKit bottle (${{ matrix.runner }})
     needs: [validate, sign-xcodemcpkit]
     if: needs.validate.outputs.requires_signing == 'true'
-    runs-on: xcode-27
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, xcode-27]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -166,6 +171,9 @@ jobs:
           persist-credentials: false
       - name: Preserve the trusted signature verifier
         run: cp scripts/sign_bottles.py "$RUNNER_TEMP/verify-signature.py"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
       - uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
         with:
           token: ${{ github.token }}
@@ -177,6 +185,7 @@ jobs:
       - name: Install and verify the signed bottle
         env:
           HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
+          RUN_NATIVE_SMOKE: ${{ matrix.runner == 'xcode-27' }}
         run: |
           formula=lynnswap/tap/xcode-mcpkit
           tap_root="$(brew --repository lynnswap/tap)"
@@ -187,7 +196,11 @@ jobs:
           cache="$(brew --cache --force-bottle "$formula")"
           mkdir -p "$(dirname "$cache")"
           cp "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle*.tar.gz "$cache"
-          brew install --include-test "$formula"
+          if [[ "$RUN_NATIVE_SMOKE" == true ]]; then
+            brew install --include-test "$formula"
+          else
+            brew install "$formula"
+          fi
           version="$(brew info --json=v2 "$formula" | python3 -c '
           import json, sys
           formula = json.load(sys.stdin)["formulae"][0]
@@ -196,11 +209,18 @@ jobs:
           print(formula["versions"]["stable"])
           ')"
           prefix="$(brew --prefix "$formula")"
-          APPLE_TEAM_ID=58KPFKMJJW "$(brew --prefix python@3.14)/bin/python3.14" \
+          APPLE_TEAM_ID=58KPFKMJJW python3 \
             "$RUNNER_TEMP/verify-signature.py" verify-install --prefix "$prefix"
-          brew test "$formula"
-          "$(brew --prefix python@3.14)/bin/python3.14" \
-            "$prefix/share/xcode-mcpkit/smoke-homebrew.py" --prefix "$prefix" --version "v$version"
+          for command in xcode-mcp-proxy xcode-mcp-proxy-server; do
+            test "$("$prefix/bin/$command" --version)" = "v$version"
+          done
+          test "$("$prefix/bin/xcode-mcp-proxy-server" --host 127.0.0.1 --port 0 --dry-run)" = \
+            'xcode-mcp-proxy-server --listen 127.0.0.1:0'
+          if [[ "$RUN_NATIVE_SMOKE" == true ]]; then
+            brew test "$formula"
+            "$(brew --prefix python@3.14)/bin/python3.14" \
+              "$prefix/share/xcode-mcpkit/smoke-homebrew.py" --prefix "$prefix" --version "v$version"
+          fi
 
   pr-pull:
     needs: [validate, sign-xcodemcpkit, verify-signed-xcodemcpkit]
