@@ -213,3 +213,10 @@ commands, and Homebrew prefixes; they never migrate the developer's installation
 Each source repository must update its pin deliberately and include `install.sh`
 in its verified release checksums. Merge shared changes before publishing a
 source release that uses the new pin.
+
+The Custom Xcode Build Service installer must first ship in a source release
+whose CLI implements `__migrate-standalone` (v0.3.4 does not). Its source release
+workflow must verify publication of that release's Homebrew formula and bottle
+before publishing `install.sh`. Adding the shared script here does not publish
+an installer or change the current formula; the corresponding source integration
+is tracked in [swift-build #38](https://github.com/lynnswap/swift-build/issues/38).

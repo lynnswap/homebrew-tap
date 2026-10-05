@@ -30,6 +30,8 @@ class InstallerTests(unittest.TestCase):
         self.log = self.root / "calls"
         self.env = dict(os.environ, HOME=str(self.home), PATH=f"{self.tools}:/usr/bin:/bin", BREW_ROOT=str(self.brew),
                         FORMULA_OPT=str(self.opt), CALL_LOG=str(self.log))
+        self.env.pop("PREFIX", None)
+        self.env.pop("BINDIR", None)
         self.script("brew", 'echo "$*" >> "$CALL_LOG"\ncase "$*" in --prefix) echo "$BREW_ROOT";; --prefix\\ *) echo "$FORMULA_OPT";; esac')
         self.script("codesign", 'echo "Identifier=$(cat "$2/identity" 2>/dev/null || cat "$2")" >&2')
         for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server", "privateheaderkit", "custom-xcode-build-service"):
