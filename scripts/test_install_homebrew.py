@@ -184,16 +184,37 @@ class InstallerTests(unittest.TestCase):
         self.script("brew", '''echo "$*" >> "$CALL_LOG"
 case "$*" in
   --prefix) echo "$BREW_ROOT";;
-  --prefix\ *) echo "$FORMULA_OPT";;
-  install\ --skip-link\ *) ;;
-  install\ *) exit 11;;
-  link\ *) for name in xcode-mcp-proxy xcode-mcp-proxy-server; do
+  --prefix\\ *) echo "$FORMULA_OPT";;
+  install\\ --skip-link\\ *) ;;
+  install\\ *) exit 11;;
+  link\\ *) for name in xcode-mcp-proxy xcode-mcp-proxy-server; do
     /bin/ln -s "$FORMULA_OPT/bin/$name" "$BREW_ROOT/bin/$name" || exit 12
   done;;
 esac''')
         result = self.run_installer(args=("--bindir", str(self.bin)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+
+    def test_linker_signed_release_identity_is_recognized(self):
+        self.old_xcode()
+        (self.bin / "xcode-mcp-proxy").write_text("xcode-mcp-proxy-555549449cbb4e5e77f634a589d66569a9cb2199")
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+
+    def test_already_linked_homebrew_still_recreates_retired_paths(self):
+        self.bin = self.brew / "bin"
+        self.bin.mkdir()
+        self.old_xcode()
+        result = self.run_installer(args=("--bindir", str(self.bin)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+
+    def test_privateheaderkit_prefix_overrides_environment_bindir(self):
+        self.env["BINDIR"] = "/old/bin"
+        result = self.run_installer("privateheaderkit", args=("--prefix", "/new", "--dry-run"))
+        self.assertIn("Would inspect: /new/bin", result.stdout)
+        self.assertNotIn("/old/bin", result.stdout)
 
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"

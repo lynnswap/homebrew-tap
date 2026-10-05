@@ -22,7 +22,10 @@ while [ "$#" -gt 0 ]; do
         --prefix|--bindir)
             [ "$formula" != custom-xcode-build-service ] || { echo "$1 is not supported for this tool." >&2; exit 1; }
             [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "$1 requires a path." >&2; exit 1; }
-            case "$1" in --prefix) prefix=$2 ;; --bindir) bindir=$2 ;; esac
+            case "$1" in
+                --prefix) prefix=$2; if [ "$formula" = privateheaderkit ]; then bindir=; fi ;;
+                --bindir) bindir=$2 ;;
+            esac
             shift 2 ;;
         --help|-h)
             echo "Install lynnswap/tap/$formula with Homebrew and migrate its standalone entry points."
@@ -101,7 +104,13 @@ for ((i=0; i<${#names[@]}; i++)); do
         identifier=$(codesign -dv "$path" 2>&1 | sed -n 's/^Identifier=//p') || identifier=
         expected=${names[i]}
         if [ "$expected" = XcodeMCPNativeHost.app ]; then expected=com.lynnswap.XcodeMCPNativeHost; fi
-        if [ "$identifier" = "$expected" ]; then owned=true; fi
+        case "$identifier" in
+            "$expected") owned=true ;;
+            "$expected"-*)
+                # Linker-signed release executables append a UUID to the name.
+                suffix=${identifier#"$expected"-}
+                if [[ "$suffix" =~ ^[[:xdigit:]]+$ ]]; then owned=true; fi ;;
+        esac
     fi
     "$owned" || fail "Unrecognized standalone entry left unchanged: $path. Homebrew is installed at $opt."
     paths+=("$path")
@@ -147,6 +156,10 @@ for ((i=0; i<${#paths[@]}; i++)); do
     fi
 done
 brew link "lynnswap/tap/$formula"
+# Homebrew can already consider a keg linked after an interrupted migration.
+for ((i=0; i<${#paths[@]}; i++)); do
+    if ! exists "${paths[i]}"; then ln -s "${links[i]}" "${paths[i]}"; fi
+done
 complete=true
 echo "Installed $formula with Homebrew. Existing command paths now follow Homebrew upgrades."
 echo "Standalone entry points were saved in: $backup"
