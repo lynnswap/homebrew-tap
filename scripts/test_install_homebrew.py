@@ -36,7 +36,8 @@ class InstallerTests(unittest.TestCase):
         self.script("codesign", 'echo "Identifier=$(cat "$2/identity" 2>/dev/null || cat "$2")" >&2')
         for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server", "privateheaderkit", "custom-xcode-build-service"):
             target = self.opt / "bin" / name
-            target.write_text('#!/bin/sh\necho "' + name + ' $*" >> "$CALL_LOG"\nexit "${CLI_STATUS:-0}"\n')
+            version_check = '[ "$1" = --tool-version ] || exit 64\n' if name == "privateheaderkit" else ""
+            target.write_text('#!/bin/sh\n' + version_check + 'echo "' + name + ' $*" >> "$CALL_LOG"\nexit "${CLI_STATUS:-0}"\n')
             target.chmod(0o755)
 
     def script(self, name, body):

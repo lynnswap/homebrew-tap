@@ -79,7 +79,7 @@ case "$formula" in
         names=(xcode-mcp-proxy xcode-mcp-proxy-server XcodeMCPNativeHost.app)
         targets=("$opt/bin/xcode-mcp-proxy" "$opt/bin/xcode-mcp-proxy-server" "$opt/libexec/XcodeMCPNativeHost.app") ;;
     privateheaderkit)
-        "$opt/bin/privateheaderkit" --version
+        "$opt/bin/privateheaderkit" --tool-version
         names=(privateheaderkit)
         targets=("$opt/bin/privateheaderkit") ;;
 esac
