@@ -184,11 +184,14 @@ class InstallerTests(unittest.TestCase):
         self.bin = self.brew / "bin"
         self.bin.mkdir()
         self.old_xcode()
+        bottle = self.root / "bottle"
+        self.opt.rename(bottle)
+        self.env["BOTTLE"] = str(bottle)
         self.script("brew", '''echo "$*" >> "$CALL_LOG"
 case "$*" in
   --prefix) echo "$BREW_ROOT";;
   --prefix\\ *) echo "$FORMULA_OPT";;
-  install\\ --skip-link\\ *) ;;
+  install\\ --skip-link\\ *) /bin/ln -s "$BOTTLE" "$FORMULA_OPT";;
   install\\ *) exit 11;;
   link\\ *) for name in xcode-mcp-proxy xcode-mcp-proxy-server; do
     /bin/ln -s "$FORMULA_OPT/bin/$name" "$BREW_ROOT/bin/$name" || exit 12
@@ -243,6 +246,25 @@ esac''')
         result = self.run_installer("privateheaderkit", args=("--bindir", "~fixture/.local/bin", "--dry-run"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(str(self.bin), result.stdout)
+
+    def test_failed_verification_does_not_suppress_existing_homebrew_links(self):
+        self.old_xcode()
+        (self.brew / "bin").mkdir()
+        command = self.brew / "bin/xcode-mcp-proxy-server"
+        command.symlink_to(self.opt / "bin/xcode-mcp-proxy-server")
+        self.env["CLI_STATUS"] = "9"
+        self.script("brew", '''echo "$*" >> "$CALL_LOG"
+case "$*" in
+  --prefix) echo "$BREW_ROOT";;
+  --prefix\\ *) echo "$FORMULA_OPT";;
+  install\\ --skip-link\\ *) rm "$BREW_ROOT/bin/xcode-mcp-proxy-server";;
+esac''')
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(command.is_symlink())
+        self.assertIn("Homebrew installation completed, but verification failed", result.stderr)
+        self.assertFalse((self.bin / "xcode-mcp-proxy-server").is_symlink())
+        self.assertIn("install lynnswap/tap/xcode-mcpkit", self.log.read_text())
 
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"

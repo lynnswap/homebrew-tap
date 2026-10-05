@@ -192,7 +192,9 @@ it in a POSIX `install.sh` launcher that invokes macOS Bash. No migration code i
 downloaded when a user runs the generated installer. The first argument to the
 embedded script is the formula name; remaining arguments are installer options.
 
-The installer runs outside the Homebrew sandbox. It installs and checks the new
+The installer runs outside the Homebrew sandbox. Existing Formula upgrades use
+Homebrew's normal linking behavior; only first installations defer linking to
+avoid collisions with standalone commands. It installs and checks the new
 CLI before replacing recognized standalone commands with stable Homebrew `opt`
 links. Existing prefixes and bindirs can be supplied for XcodeMCPKit and
 PrivateHeaderKit. Fresh installations do not create legacy aliases. Existing

@@ -50,6 +50,13 @@ esac
 case "$bindir" in /*) ;; *) bindir=$PWD/$bindir ;; esac
 fail() { echo "$*" >&2; exit 1; }
 exists() { [ -e "$1" ] || [ -L "$1" ]; }
+verify_command() {
+    "$@" || {
+        result=$?
+        echo 'Homebrew installation completed, but verification failed. Standalone entry points are unchanged.' >&2
+        exit "$result"
+    }
+}
 if "$dry_run"; then
     echo "Would install lynnswap/tap/$formula, verify it, then migrate recognized standalone entry points."
     if [ "$formula" = custom-xcode-build-service ]; then
@@ -70,25 +77,31 @@ if ! command -v brew >/dev/null 2>&1; then
     done
 fi
 command -v brew >/dev/null 2>&1 || fail 'Homebrew is required. Install it from https://brew.sh, then rerun this installer.'
-brew install --skip-link "lynnswap/tap/$formula"
-opt=$(brew --prefix "lynnswap/tap/$formula")
 brew_root=$(brew --prefix)
 brew_root=$(cd "$brew_root" && pwd -P)
+# A first install may collide with a standalone command in Homebrew's bin.
+# Existing Homebrew upgrades keep their normal linking and failure behavior.
+if [ -d "$brew_root/opt/$formula" ]; then
+    brew install "lynnswap/tap/$formula"
+else
+    brew install --skip-link "lynnswap/tap/$formula"
+fi
+opt=$(brew --prefix "lynnswap/tap/$formula")
 case "$opt" in /*) ;; *) fail "Homebrew returned a non-absolute prefix: $opt" ;; esac
 if [ "$formula" = custom-xcode-build-service ]; then
-    "$opt/bin/custom-xcode-build-service" --version
+    verify_command "$opt/bin/custom-xcode-build-service" --version
     brew link "lynnswap/tap/$formula"
     exec "$opt/bin/custom-xcode-build-service" __migrate-standalone
 fi
 case "$formula" in
     xcode-mcpkit)
-        "$opt/bin/xcode-mcp-proxy" --version
-        "$opt/bin/xcode-mcp-proxy-server" --version
-        [ -d "$opt/libexec/XcodeMCPNativeHost.app" ] || fail 'Homebrew native host is missing.'
+        verify_command "$opt/bin/xcode-mcp-proxy" --version
+        verify_command "$opt/bin/xcode-mcp-proxy-server" --version
+        [ -d "$opt/libexec/XcodeMCPNativeHost.app" ] || fail 'Homebrew native host is missing. Standalone entry points are unchanged.'
         names=(xcode-mcp-proxy xcode-mcp-proxy-server XcodeMCPNativeHost.app)
         targets=("$opt/bin/xcode-mcp-proxy" "$opt/bin/xcode-mcp-proxy-server" "$opt/libexec/XcodeMCPNativeHost.app") ;;
     privateheaderkit)
-        "$opt/bin/privateheaderkit" --tool-version
+        verify_command "$opt/bin/privateheaderkit" --tool-version
         names=(privateheaderkit)
         targets=("$opt/bin/privateheaderkit") ;;
 esac
