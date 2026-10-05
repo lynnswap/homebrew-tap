@@ -110,8 +110,9 @@ Formula from the tagged template, and creates or reuses a native Formula PR.
 The first release uses this same path; no placeholder Formula is needed.
 
 The updater starts the existing read-only bottle workflow with the PR number and
-full head SHA. XcodeMCPKit builds on `xcode-27` and keeps the builder's native
-bottle tag. It does not run the custom build service's retagging or macOS 26 test.
+full head SHA. XcodeMCPKit builds on `xcode-27` and registers its bottle as
+`arm64_tahoe` so Homebrew selects it on macOS 26 and later. The archive and its
+receipt retain the actual build environment.
 Its Formula checks the installed CLI versions, options, and native signature.
 A separate read-only job installs the built bottle and exercises direct and
 proxy MCP sessions against a disposable project outside Homebrew's test sandbox.
@@ -121,9 +122,12 @@ commands, nested Swift libraries, and the helper, submits the payload to Apple,
 and staples the accepted ticket to the app. The helper keeps signing identifier
 `com.lynnswap.XcodeMCPNativeHost` so Xcode recognizes it across upgrades.
 
-A separate job installs the signed bottle, checks Developer ID, Team ID, hardened
-runtime, and notarization, and repeats the native/proxy smoke tests. The publisher
-then uploads that exact signed artifact and merges the Formula PR automatically.
+Separate jobs install the same signed bottle on macOS 26 and the Xcode 27 runner
+without forcing bottle selection. Both check CLI startup, Developer ID, Team ID,
+hardened runtime, and notarization. The Xcode 27 runner also repeats the Formula
+and native/proxy smoke tests; the macOS 26 hosted image has Xcode 26.6 and cannot
+run those Xcode 27 integration tests. Publication requires both jobs to succeed.
+The publisher then uploads that exact signed artifact and merges the Formula PR automatically.
 The bottle must have `any_skip_relocation`: relocation could invalidate the
 Developer ID signature. Other Formulae retain their existing publication path.
 A retry can reuse the tested raw bottle; if signing runs again it requires a new

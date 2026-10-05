@@ -143,8 +143,8 @@ jobs:
         run: |
           brew test-bot --only-formulae --testing-formulae="$FORMULAE" --added-formulae="$ADDED_FORMULAE"
 
-      - name: Register custom service bottles for macOS 26 and later
-        if: needs.select-builder.outputs.custom_service == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+      - name: Register native bottles for macOS 26 and later
+        if: (needs.select-builder.outputs.custom_service == 'true' || needs.select-builder.outputs.xcode_mcpkit == 'true') && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         run: python3 "$RUNNER_TEMP/trusted-ci/bottle_tags.py" .
 
       - name: Upload bottles as artifact

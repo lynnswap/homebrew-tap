@@ -5,10 +5,11 @@ from formula_builder import builder
 
 
 class FormulaBuilderTests(unittest.TestCase):
-    def test_xcodemcpkit_uses_xcode_27_without_custom_service_retagging_or_tests(self):
+    def test_xcodemcpkit_uses_xcode_27_and_selects_its_own_installation_checks(self):
         value = builder([dict(filename="Formula/xcode-mcpkit.rb", status="added")])
         self.assertEqual(value["runner"], "xcode-27")
         self.assertEqual(value["custom_service"], "false")
+        self.assertEqual(value["xcode_mcpkit"], "true")
         self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="modified")])["custom_service"], "true")
 
     def test_custom_service_uses_xcode_27(self):

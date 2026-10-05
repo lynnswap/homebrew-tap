@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register the custom service bottle for its supported macOS baseline."""
+"""Register Xcode 27-built bottles for their verified macOS 26 baseline."""
 
 import argparse
 import json
@@ -10,7 +10,7 @@ def register_bottles(directory):
     for path in directory.glob("*.bottle.json"):
         metadata = json.loads(path.read_text())
         for entry in metadata.values():
-            if entry["formula"]["name"] != "custom-xcode-build-service":
+            if entry["formula"]["name"] not in ("custom-xcode-build-service", "xcode-mcpkit"):
                 continue
             tags = entry["bottle"]["tags"]
             for tag in list(tags):
@@ -18,7 +18,7 @@ def register_bottles(directory):
                     continue
                 bottle = tags.pop(tag)
                 old_filename = bottle["local_filename"]
-                # The payload targets macOS 26; the receipt still records the build OS.
+                # macOS 26 installation is verified separately; retain the actual build OS.
                 old_suffix = f".{tag}.bottle"
                 for field in ("filename", "local_filename"):
                     bottle[field] = bottle[field].replace(old_suffix, ".arm64_tahoe.bottle")
