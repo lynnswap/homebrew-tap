@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -322,6 +323,40 @@ class ApprovedBottlesTests(unittest.TestCase):
             with patch.object(guard.subprocess, "run", side_effect=[help_result, log_result]) as run:
                 self.assertEqual(guard.GitHub("owner/tap").job_log(7), log_result.stdout)
                 self.assertEqual(run.call_args.args[0], ["gh", "api", *expected, "repos/owner/tap/actions/jobs/7/logs"])
+
+
+class PublicationWorkflowTests(unittest.TestCase):
+    def test_candidate_revalidation_supports_standalone_and_nested_runs(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/publish.yml').read_text()
+        steps = re.findall(
+            r'      - name: Revalidate the tested publication candidate\n.*?        run: \|\n'
+            r'((?:          [^\n]*\n)+)', workflow, re.DOTALL)
+        self.assertEqual(len(steps), 2)
+        for index, step in enumerate(steps):
+            script = '\n'.join(line[10:] for line in step.splitlines())
+            for current_run in ('', '123', '456'):
+                with self.subTest(step=index, current_run=current_run), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    output = root / 'arguments'
+                    python = root / 'python3'
+                    python.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$ARGUMENT_OUTPUT"\n')
+                    python.chmod(0o755)
+                    env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                               ARGUMENT_OUTPUT=str(output), CURRENT_CI_RUN=current_run, OWN_RUN='123',
+                               GITHUB_REPOSITORY='lynnswap/homebrew-tap', PULL_REQUEST='38',
+                               HEAD_SHA=SHA, CANDIDATE_DIGEST='b' * 64)
+                    result = subprocess.run(['/bin/bash', '-euo', 'pipefail', '-c', script],
+                                            env=env, capture_output=True, text=True)
+                    if current_run == '456':
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        expected = ['scripts/approved_bottles.py', '--repo', 'lynnswap/homebrew-tap',
+                                    '--pr', '38', '--head', SHA, '--candidate-digest', 'b' * 64]
+                        if current_run:
+                            expected += ['--current-ci-run', current_run]
+                        self.assertEqual(output.read_text().splitlines(), expected)
 
 
 class PublishBottlesTests(unittest.TestCase):
