@@ -255,30 +255,6 @@ def payload_code(prefix):
     return app, host, code
 
 
-def native_entitlements(tools):
-    developer = Path(os.environ.get('DEVELOPER_DIR') or tools.run(
-        ['/usr/bin/xcode-select', '-p'], 'Select Xcode').stdout.decode().strip())
-    paths = [developer / 'Library/Xcode/Agents/Xcode Service.app', developer / 'usr/bin/mcpbridge']
-    def merge(left, right):
-        if isinstance(left, dict) and isinstance(right, dict):
-            result = dict(left)
-            for key, value in right.items():
-                result[key] = merge(result[key], value) if key in result else value
-            return result
-        if isinstance(left, list) and isinstance(right, list):
-            return left + [item for item in right if item not in left]
-        if type(left) is type(right) and left == right:
-            return left
-        raise ReleaseError('Selected Xcode service and bridge entitlements conflict.')
-    result = {}
-    for path in paths:
-        data = tools.run(['/usr/bin/codesign', '-d', '--entitlements', ':-', str(path)],
-                         'Read selected Xcode entitlements').stdout
-        result = merge(result, plistlib.loads(data))
-    result['com.apple.security.cs.allow-dyld-environment-variables'] = True
-    return result
-
-
 def verify_signature(tools, path, team, identifier=None):
     tools.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(path)], 'Verify signature')
     info = tools.run(['/usr/bin/codesign', '-d', '--verbose=4', str(path)], 'Inspect signature').stderr.decode()
@@ -302,8 +278,6 @@ def verify_install(prefix, team):
 
 def sign_archive(tools, root, prefix, credentials, configuration):
     app, host, code = payload_code(prefix)
-    entitlements = root / 'native-entitlements.plist'
-    entitlements.write_bytes(plistlib.dumps(native_entitlements(tools)))
     common = ['/usr/bin/codesign', '--force', '--sign', credentials.certificate_sha1,
               '--timestamp', '--options', 'runtime']
     if credentials.keychain:
@@ -313,7 +287,8 @@ def sign_archive(tools, root, prefix, credentials, configuration):
             continue
         identifier = f'com.lynnswap.XcodeMCPKit.{path.name}'
         tools.run([*common, '--identifier', identifier, str(path)], 'Sign nested code or CLI')
-    tools.run([*common, '--identifier', HOST_IDENTIFIER, '--entitlements', str(entitlements), str(app)], 'Sign native host')
+    # The approved source build owns the helper's entitlements.
+    tools.run([*common, '--identifier', HOST_IDENTIFIER, '--preserve-metadata=entitlements', str(app)], 'Sign native host')
     for path in code:
         verify_signature(tools, path, configuration['APPLE_TEAM_ID'], HOST_IDENTIFIER if path == host else None)
     archive = root / 'notarization.zip'
