@@ -103,7 +103,11 @@ for ((i=0; i<${#names[@]}; i++)); do
         # Read identity without executing an old binary or requiring it to work.
         identifier=$(codesign -dv "$path" 2>&1 | sed -n 's/^Identifier=//p') || identifier=
         expected=${names[i]}
-        if [ "$expected" = XcodeMCPNativeHost.app ]; then expected=com.lynnswap.XcodeMCPNativeHost; fi
+        if [ "$expected" = XcodeMCPNativeHost.app ]; then
+            expected=com.lynnswap.XcodeMCPNativeHost
+            # Source installs before the stable helper identity used Xcode's ID.
+            if [ "$identifier" = com.apple.dt.mcp-server ]; then owned=true; fi
+        fi
         case "$identifier" in
             "$expected") owned=true ;;
             "$expected"-*)

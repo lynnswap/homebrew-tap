@@ -218,6 +218,13 @@ esac''')
         self.assertIn("Would inspect: /new/bin", result.stdout)
         self.assertNotIn("/old/bin", result.stdout)
 
+    def test_early_source_installed_helper_identity_is_recognized(self):
+        self.old_xcode()
+        (self.bin / "XcodeMCPNativeHost.app/identity").write_text("com.apple.dt.mcp-server")
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "XcodeMCPNativeHost.app").is_symlink())
+
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"
         keg.mkdir(parents=True)
