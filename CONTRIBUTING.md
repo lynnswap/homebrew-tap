@@ -182,3 +182,34 @@ runs and actual CI/publication failures are not repeatedly retried.
 Keep workflow actions and the Renovate image pinned to immutable identities.
 Configuration changes run strict validation and a read-only full dry run; trusted
 configuration controls Renovate's manager and file scope.
+
+## Standalone installer entry points
+
+`scripts/install-homebrew.sh` owns the shared installation and migration behavior
+for XcodeMCPKit, PrivateHeaderKit, and Custom Xcode Build Service. Source release
+packagers fetch this file at a full tap commit SHA, verify its SHA-256, and embed
+it in a POSIX `install.sh` launcher that invokes macOS Bash. No migration code is
+downloaded when a user runs the generated installer. The first argument to the
+embedded script is the formula name; remaining arguments are installer options.
+
+The installer runs outside the Homebrew sandbox. It installs and checks the new
+CLI before replacing recognized standalone commands with stable Homebrew `opt`
+links. Existing prefixes and bindirs can be supplied for XcodeMCPKit and
+PrivateHeaderKit. Fresh installations do not create legacy aliases. Existing
+aliases are idempotent and can be removed when callers no longer use those paths.
+`--dry-run` reports the targeted locations without running Homebrew or writing files.
+
+Replaced entries are retained in a private backup directory beside the old
+commands. A failed switch attempts to restore them and reports any rollback
+failure with the backup path. PrivateHeaderKit payloads and generated headers
+remain in place, including resources an already running command may need. Custom
+Xcode Build Service delegates selection migration to its packaged CLI through
+`__migrate-standalone`; that command owns the installation lock, settings, and
+rollback. Neither the shared installer nor the formula changes shell profiles
+or unrelated client configurations. Running clients need a restart.
+
+Run the installer fixtures with the script tests above. They use temporary homes,
+commands, and Homebrew prefixes; they never migrate the developer's installation.
+Each source repository must update its pin deliberately and include `install.sh`
+in its verified release checksums. Merge shared changes before publishing a
+source release that uses the new pin.
