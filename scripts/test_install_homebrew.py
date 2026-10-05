@@ -159,6 +159,42 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("custom-xcode-build-service __migrate-standalone", self.log.read_text())
 
+    def test_environment_bindir_is_retained_and_option_can_override_it(self):
+        self.old_xcode()
+        self.env["BINDIR"] = str(self.bin)
+        self.env["PREFIX"] = "/not/the/installation"
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+        result = self.run_installer(args=("--bindir", str(self.root / "absent"), "--dry-run"))
+        self.assertIn(str(self.root / "absent"), result.stdout)
+
+    def test_signal_after_move_restores_the_current_entry(self):
+        self.old_xcode()
+        self.script("mv", '/bin/mv "$@" || exit $?\ncase "$1" in *backup*) ;; *) kill -TERM "$PPID";; esac')
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.bin / "xcode-mcp-proxy").read_text(), "xcode-mcp-proxy")
+        self.assertFalse((self.bin / "xcode-mcp-proxy").is_symlink())
+
+    def test_old_commands_in_homebrew_bin_are_retired_before_linking(self):
+        self.bin = self.brew / "bin"
+        self.bin.mkdir()
+        self.old_xcode()
+        self.script("brew", '''echo "$*" >> "$CALL_LOG"
+case "$*" in
+  --prefix) echo "$BREW_ROOT";;
+  --prefix\ *) echo "$FORMULA_OPT";;
+  install\ --skip-link\ *) ;;
+  install\ *) exit 11;;
+  link\ *) for name in xcode-mcp-proxy xcode-mcp-proxy-server; do
+    /bin/ln -s "$FORMULA_OPT/bin/$name" "$BREW_ROOT/bin/$name" || exit 12
+  done;;
+esac''')
+        result = self.run_installer(args=("--bindir", str(self.bin)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"
         keg.mkdir(parents=True)

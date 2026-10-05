@@ -13,8 +13,8 @@ if [ "$EUID" -eq 0 ]; then
     echo 'Run this installer as your login user, not root.' >&2
     exit 1
 fi
-prefix=$HOME/.local
-bindir=
+prefix=${PREFIX:-$HOME/.local}
+bindir=${BINDIR:-}
 dry_run=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -58,13 +58,14 @@ if ! command -v brew >/dev/null 2>&1; then
     done
 fi
 command -v brew >/dev/null 2>&1 || fail 'Homebrew is required. Install it from https://brew.sh, then rerun this installer.'
-brew install "lynnswap/tap/$formula"
+brew install --skip-link "lynnswap/tap/$formula"
 opt=$(brew --prefix "lynnswap/tap/$formula")
 brew_root=$(brew --prefix)
 brew_root=$(cd "$brew_root" && pwd -P)
 case "$opt" in /*) ;; *) fail "Homebrew returned a non-absolute prefix: $opt" ;; esac
 if [ "$formula" = custom-xcode-build-service ]; then
     "$opt/bin/custom-xcode-build-service" --version
+    brew link "lynnswap/tap/$formula"
     exec "$opt/bin/custom-xcode-build-service" __migrate-standalone
 fi
 case "$formula" in
@@ -79,7 +80,7 @@ case "$formula" in
         names=(privateheaderkit)
         targets=("$opt/bin/privateheaderkit") ;;
 esac
-[ -d "$bindir" ] || { echo "Installed $formula with Homebrew; no standalone entry points found."; exit 0; }
+[ -d "$bindir" ] || { brew link "lynnswap/tap/$formula"; echo "Installed $formula with Homebrew; no standalone entry points found."; exit 0; }
 bindir=$(cd "$bindir" && pwd -P)
 # Never modify a keg, even when --bindir reaches it through a directory symlink.
 case "$bindir/" in "$brew_root/Cellar/"*|"$brew_root/opt/"*) fail "Refusing to change Homebrew files in $bindir" ;; esac
@@ -106,7 +107,7 @@ for ((i=0; i<${#names[@]}; i++)); do
     paths+=("$path")
     links+=("$target")
 done
-[ "${#paths[@]}" -gt 0 ] || { echo "Installed $formula with Homebrew; no migration needed."; exit 0; }
+[ "${#paths[@]}" -gt 0 ] || { brew link "lynnswap/tap/$formula"; echo "Installed $formula with Homebrew; no migration needed."; exit 0; }
 lock=$bindir/.lynnswap-homebrew-migration.lock
 mkdir "$lock" || fail "Cannot acquire migration lock: $lock. Check for another installer before removing a stale lock."
 backup=
@@ -119,7 +120,8 @@ finish() {
         echo "Migration failed; Homebrew remains installed at $opt. Restoring standalone entry points." >&2
         for ((j=moved-1; j>=0; j--)); do
             path=${paths[j]}
-            if [ -L "$path" ] && [ "$(readlink "$path")" = "${links[j]}" ]; then
+            exists "$backup/${path##*/}" || continue
+            if [ -L "$path" ] && { [ "$(readlink "$path")" = "${links[j]}" ] || [ "$path" -ef "${links[j]}" ]; }; then
                 rm "$path" || { echo "Rollback could not remove $path; backup: $backup" >&2; continue; }
             fi
             if exists "$path"; then
@@ -138,10 +140,13 @@ trap 'exit 143' HUP TERM
 backup=$(mktemp -d "$bindir/.${formula}-standalone-backup.XXXXXX")
 for ((i=0; i<${#paths[@]}; i++)); do
     path=${paths[i]}
-    mv "$path" "$backup/${path##*/}"
     moved=$((moved+1))
-    ln -s "${links[i]}" "$path"
+    mv "$path" "$backup/${path##*/}"
+    if [ "$bindir" != "$brew_root/bin" ] || [ "${path##*/}" = XcodeMCPNativeHost.app ]; then
+        ln -s "${links[i]}" "$path"
+    fi
 done
+brew link "lynnswap/tap/$formula"
 complete=true
 echo "Installed $formula with Homebrew. Existing command paths now follow Homebrew upgrades."
 echo "Standalone entry points were saved in: $backup"
