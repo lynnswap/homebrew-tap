@@ -210,6 +210,8 @@ Xcode Build Service delegates selection migration to its packaged CLI through
 rollback. Neither the shared installer nor the formula changes shell profiles
 or unrelated client configurations. Running clients need a restart.
 
+Run `brew style scripts/install-homebrew.sh` for the ShellCheck and Homebrew
+formatting checks required by `brew test-bot --only-tap-syntax`.
 Run the installer fixtures with the script tests above. They use temporary homes,
 commands, and Homebrew prefixes; they never migrate the developer's installation.
 Each source repository must update its pin deliberately and include `install.sh`

@@ -149,6 +149,18 @@ class InstallerTests(unittest.TestCase):
         backups = list(self.bin.glob(".*backup.*"))
         self.assertEqual((backups[0] / "xcode-mcp-proxy").read_text(), "xcode-mcp-proxy")
 
+    def test_rollback_reports_unreadable_link_and_preserves_its_backup(self):
+        self.old_xcode()
+        self.script("ln", 'case "$3" in *xcode-mcp-proxy-server) exit 7;; esac\nexec /bin/ln "$@"')
+        self.script("readlink", 'case "$1" in *xcode-mcp-proxy) exit 8;; esac\nexec /usr/bin/readlink "$@"')
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 7)
+        self.assertIn("Rollback could not inspect", result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
+        backup = next(self.bin.glob(".*backup.*"))
+        self.assertEqual((backup / "xcode-mcp-proxy").read_text(), "xcode-mcp-proxy")
+        self.assertEqual((self.bin / "xcode-mcp-proxy-server").read_text(), "xcode-mcp-proxy-server")
+
     def test_custom_directory_and_prefix(self):
         old = self.root / "custom prefix/bin"
         old.mkdir(parents=True)
