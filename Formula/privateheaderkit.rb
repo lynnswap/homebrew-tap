@@ -6,8 +6,8 @@ class Privateheaderkit < Formula
   license "MIT"
 
   bottle do
-    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/privateheaderkit-0.8.0"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe: "bc1b8bfccfccf7b42ca03da156ae5d029f4893b6cebf1839fe73333efdd5052f"
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/privateheaderkit-0.8.1"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "303fb1caa0339928ad80146619c5c2e73f8cc981ec19af6ed1baaa2c62c20ab2"
   end
 
   depends_on xcode: ["26.4", :build]
