@@ -187,7 +187,7 @@ jobs:
           cache="$(brew --cache --force-bottle "$formula")"
           mkdir -p "$(dirname "$cache")"
           cp "$RUNNER_TEMP/bottles/"xcode-mcpkit--*.bottle*.tar.gz "$cache"
-          brew install "$formula"
+          brew install --include-test "$formula"
           version="$(brew info --json=v2 "$formula" | python3 -c '
           import json, sys
           formula = json.load(sys.stdin)["formulae"][0]
