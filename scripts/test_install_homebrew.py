@@ -252,6 +252,9 @@ esac''')
         (self.brew / "bin").mkdir()
         command = self.brew / "bin/xcode-mcp-proxy-server"
         command.symlink_to(self.opt / "bin/xcode-mcp-proxy-server")
+        registry = self.brew / "var/homebrew/linked"
+        registry.mkdir(parents=True)
+        (registry / "xcode-mcpkit").symlink_to(self.opt)
         self.env["CLI_STATUS"] = "9"
         self.script("brew", '''echo "$*" >> "$CALL_LOG"
 case "$*" in
@@ -265,6 +268,21 @@ esac''')
         self.assertIn("Homebrew installation completed, but verification failed", result.stderr)
         self.assertFalse((self.bin / "xcode-mcp-proxy-server").is_symlink())
         self.assertIn("install lynnswap/tap/xcode-mcpkit", self.log.read_text())
+
+    def test_unlinked_keg_retry_still_defers_linking_until_after_migration(self):
+        self.bin = self.brew / "bin"
+        self.bin.mkdir()
+        self.old_xcode()
+        self.script("brew", '''echo "$*" >> "$CALL_LOG"
+case "$*" in
+  --prefix) echo "$BREW_ROOT";;
+  --prefix\\ *) echo "$FORMULA_OPT";;
+  install\\ --skip-link\\ *) ;;
+  install\\ *) exit 12;;
+esac''')
+        result = self.run_installer(args=("--bindir", str(self.bin)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "xcode-mcp-proxy").is_symlink())
 
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"

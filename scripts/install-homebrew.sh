@@ -79,9 +79,10 @@ fi
 command -v brew >/dev/null 2>&1 || fail 'Homebrew is required. Install it from https://brew.sh, then rerun this installer.'
 brew_root=$(brew --prefix)
 brew_root=$(cd "$brew_root" && pwd -P)
-# A first install may collide with a standalone command in Homebrew's bin.
-# Existing Homebrew upgrades keep their normal linking and failure behavior.
-if [ -d "$brew_root/opt/$formula" ]; then
+# opt exists even for an unlinked keg. Read Homebrew's linked-keg registry so
+# interrupted first installs keep deferring links, while linked upgrades retain
+# Homebrew's normal linking and failure behavior.
+if [ -L "$brew_root/var/homebrew/linked/$formula" ]; then
     brew install "lynnswap/tap/$formula"
 else
     brew install --skip-link "lynnswap/tap/$formula"
