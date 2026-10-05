@@ -226,6 +226,24 @@ esac''')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.bin / "XcodeMCPNativeHost.app").is_symlink())
 
+    def test_quoted_home_paths_match_the_standalone_installers(self):
+        for formula in ("privateheaderkit", "xcode-mcpkit"):
+            with self.subTest(formula=formula):
+                result = self.run_installer(formula, args=("--prefix", "~/.local", "--dry-run"))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(str(self.bin), result.stdout)
+        (self.bin / "privateheaderkit").symlink_to("../libexec/privateheaderkit/current/privateheaderkit")
+        self.env["BINDIR"] = "~/.local/bin"
+        result = self.run_installer("privateheaderkit")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.bin / "privateheaderkit").resolve(), (self.opt / "bin/privateheaderkit").resolve())
+
+    def test_named_user_home_is_expanded_without_evaluating_the_path(self):
+        self.script("dscacheutil", 'echo "dir: $HOME"')
+        result = self.run_installer("privateheaderkit", args=("--bindir", "~fixture/.local/bin", "--dry-run"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.bin), result.stdout)
+
     def test_homebrew_keg_cannot_be_changed(self):
         keg = self.brew / "Cellar/xcode-mcpkit/1/bin"
         keg.mkdir(parents=True)

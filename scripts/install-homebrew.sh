@@ -38,6 +38,15 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 bindir=${bindir:-$prefix/bin}
+# The Swift standalone installers accepted quoted home-directory paths too.
+case "$bindir" in
+    '~'|'~/'*) bindir=$HOME${bindir#\~} ;;
+    '~'*)
+        remainder=${bindir#\~}
+        username=${remainder%%/*}
+        user_home=$(dscacheutil -q user -a name "$username" | sed -n 's/^dir: //p')
+        if [ -n "$user_home" ]; then bindir=$user_home${remainder#"$username"}; fi ;;
+esac
 case "$bindir" in /*) ;; *) bindir=$PWD/$bindir ;; esac
 fail() { echo "$*" >&2; exit 1; }
 exists() { [ -e "$1" ] || [ -L "$1" ]; }
