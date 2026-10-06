@@ -95,6 +95,42 @@ class BinaryFormulaTests(unittest.TestCase):
                 self.assertEqual(bool(installs), corruption != "checksum")
                 self.assertFalse(any("bottle" in command for command in commands))
 
+    def test_release_dispatched_installation_keeps_the_requested_tag_and_commit(self):
+        for mismatch in (None, "tag", "commit"):
+            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source = BinarySource()
+                item = source.release
+                if mismatch == "commit":
+                    item["target_commitish"] = "b" * 40
+                (root / "libexec").mkdir()
+                (root / "libexec/manifest.json").write_text(json.dumps(dict(
+                    version=TAG, sourceRevision=item["target_commitish"])))
+                metadata = dict(versions=dict(stable="1.2.3"), urls=dict(stable=dict(
+                    url=item["assets"][0]["browser_download_url"], checksum=SOURCE_DIGEST)))
+                commands = []
+                def run(command, **kwargs):
+                    commands.append(command)
+                    output = ""
+                    if command[0:3] == ["brew", "info", "--json=v2"]:
+                        output = json.dumps(dict(formulae=[metadata]))
+                    elif command[0:2] == ["brew", "--prefix"]:
+                        output = str(root)
+                    return subprocess.CompletedProcess(command, 0, stdout=output)
+                with patch.object(binary_formula, "GitHub", return_value=source), \
+                        patch.object(binary_formula.subprocess, "check_output", return_value=SHA), \
+                        patch.object(binary_formula.subprocess, "run", side_effect=run):
+                    def verify():
+                        binary_formula.verify(BinaryTap(), 3, SHA, root,
+                                              source_tag="v1.3.0" if mismatch == "tag" else TAG,
+                                              source_sha=SHA)
+                    if mismatch:
+                        with self.assertRaisesRegex(CandidateError, "requested release|approved commit"):
+                            verify()
+                    else:
+                        verify()
+                self.assertEqual(any(command[0:2] == ["brew", "install"] for command in commands), mismatch is None)
+
 
 if __name__ == "__main__":
     unittest.main()

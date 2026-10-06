@@ -1,7 +1,10 @@
 import base64
 import copy
+import contextlib
 import hashlib
 import io
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -246,6 +249,39 @@ class BinaryUpdateTests(unittest.TestCase):
         with patch.object(update, "urlopen", return_value=io.BytesIO(b"modified recipe")):
             with self.assertRaisesRegex(CandidateError, "downloaded Formula"):
                 update.prepared_formula(source, TAG, SHA, SOURCE_DIGEST, source.formula_digest)
+
+    def test_a_correctly_hashed_stale_recipe_cannot_complete_or_downgrade_an_update(self):
+        for current in ("1.2.1", "1.2.2"):
+            with self.subTest(current=current), tempfile.TemporaryDirectory() as directory:
+                source = BinarySource()
+                source.formula = source.formula.replace("1.2.3", "1.2.1")
+                source.formula_digest = hashlib.sha256(source.formula.encode()).hexdigest()
+                source.release["assets"][1]["digest"] = "sha256:" + source.formula_digest
+                tap = Tap(source.formula.replace("1.2.1", current), source=source.repository)
+                output = Path(directory) / "outputs"
+                arguments = ["update_formula", "--repo", tap.repository,
+                             "--source-repository", source.repository, "--source-tag", TAG,
+                             "--source-sha", SHA, "--source-sha256", SOURCE_DIGEST,
+                             "--formula-sha256", source.formula_digest, "--github-output", str(output)]
+                error = io.StringIO()
+                with patch("sys.argv", arguments), patch.object(update, "GitHub", side_effect=[source, tap]) as github, \
+                        patch.object(update, "urlopen", return_value=io.BytesIO(source.formula.encode())), \
+                        contextlib.redirect_stderr(error):
+                    self.assertEqual(update.main(), 1)
+                self.assertIn("version differs from the requested release", error.getvalue())
+                self.assertEqual(tap.writes, [])
+                self.assertFalse(output.exists())
+                github.assert_called_once_with(source.repository)
+
+    def test_the_requested_version_cannot_reference_another_binary_archive(self):
+        for before, after in ((f"/download/{TAG}/", "/download/v1.2.2/"), (SOURCE_DIGEST, "0" * 64)):
+            with self.subTest(before=before):
+                source = BinarySource()
+                source.formula = source.formula.replace(before, after)
+                source.formula_digest = hashlib.sha256(source.formula.encode()).hexdigest()
+                source.release["assets"][1]["digest"] = "sha256:" + source.formula_digest
+                with self.assertRaisesRegex(CandidateError, "requested binary archive"):
+                    self.prepared(source)
 
 
 if __name__ == "__main__":

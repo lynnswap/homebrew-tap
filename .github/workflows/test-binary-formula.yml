@@ -9,6 +9,14 @@ on:
       head_sha:
         required: true
         type: string
+      source_tag:
+        description: Expected upstream version for a release-dispatched update
+        required: false
+        type: string
+      source_sha:
+        description: Expected upstream commit for a release-dispatched update
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -33,6 +41,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PULL_REQUEST: ${{ inputs.pull_request }}
           HEAD_SHA: ${{ inputs.head_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           python3 "$GITHUB_WORKSPACE/trusted/scripts/binary_formula.py" verify --repo "$GITHUB_REPOSITORY" \
-            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --tap-root "$(brew --repository lynnswap/tap)"
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA" --tap-root "$(brew --repository lynnswap/tap)" \
+            --source-tag "$SOURCE_TAG" --source-sha "$SOURCE_SHA"

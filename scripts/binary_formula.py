@@ -18,7 +18,7 @@ def require_binary_only(files):
         raise CandidateError("The binary installation workflow accepts only the custom build service Formula.")
 
 
-def verify(github, number, head, tap_root):
+def verify(github, number, head, tap_root, *, source_tag=None, source_sha=None):
     require_binary_only(formula_proposal(github, number, head))
     subprocess.run(["git", "-C", str(tap_root), "fetch", "origin", f"refs/pull/{number}/head"], check=True)
     actual = subprocess.check_output(["git", "-C", str(tap_root), "rev-parse", "FETCH_HEAD"], text=True).strip()
@@ -33,8 +33,10 @@ def verify(github, number, head, tap_root):
     brew("trust", "--formula", formula)
     info = json.loads(brew("info", "--json=v2", formula, capture=True).stdout)["formulae"][0]
     tag = "v" + info["versions"]["stable"]
+    if source_tag and tag != source_tag:
+        raise CandidateError("The Formula's resolved version differs from the requested release.")
     source = GitHub(BINARY_SOURCE)
-    item, assets = published_binary(source, tag)
+    item, assets = published_binary(source, tag, source_sha or None)
     asset = assets[BINARY_ARCHIVE]
     if (info["urls"]["stable"]["url"] != asset["browser_download_url"]
             or "sha256:" + info["urls"]["stable"]["checksum"] != asset["digest"]):
@@ -67,13 +69,15 @@ def main():
     parser.add_argument("--pr", type=int, required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--tap-root", type=Path)
+    parser.add_argument("--source-tag", help="Expected upstream version for a release-dispatched update")
+    parser.add_argument("--source-sha", help="Expected upstream commit for a release-dispatched update")
     args = parser.parse_args()
     try:
         github = GitHub(args.repo)
         if args.command == "verify":
             if args.tap_root is None:
                 parser.error("verify requires --tap-root")
-            verify(github, args.pr, args.head, args.tap_root)
+            verify(github, args.pr, args.head, args.tap_root, source_tag=args.source_tag, source_sha=args.source_sha)
         else:
             print(json.dumps(merge(github, args.pr, args.head)))
         return 0

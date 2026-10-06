@@ -59,7 +59,19 @@ def prepared_formula(source, tag, sha, source_digest, formula_digest):
             data = response.read()
         if hashlib.sha256(data).hexdigest() != formula_digest:
             raise CandidateError("The downloaded Formula differs from the published asset.")
-        return data.decode("utf-8")
+        formula = data.decode("utf-8")
+        if formula_version(formula) != tuple(map(int, tag.removeprefix("v").split("."))):
+            raise CandidateError("The downloaded Formula's version differs from the requested release.")
+        expected = dict(url=assets[BINARY_ARCHIVE]["browser_download_url"], sha256=source_digest)
+        for field, value in expected.items():
+            declarations = re.findall(rf"^  {field} (.*)$", formula, re.MULTILINE)
+            match = re.fullmatch(r'''(["'])([^"'\n]+)\1(?:\s+#.*)?''', declarations[0]) if len(declarations) == 1 else None
+            actual = match[2] if match else None
+            if actual is not None and field == "sha256":
+                actual = actual.lower()
+            if actual != value:
+                raise CandidateError(f"The downloaded Formula's {field} differs from the requested binary archive.")
+        return formula
     url = f"https://github.com/{SOURCE}/archive/refs/tags/{tag}.tar.gz"
     with urlopen(url, timeout=60) as response:
         digest = hashlib.file_digest(response, "sha256").hexdigest()

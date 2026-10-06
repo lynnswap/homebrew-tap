@@ -196,11 +196,12 @@ that run; scheduled and ordinary manual maintenance keep the configured limit.
 The existing native PR CI and publisher still own validation, bottle publication,
 and merge. Daily and manual maintenance remain available for recovery.
 
-Renovate maintains `Formula/privateheaderkit.rb` and
-`Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
-through PRs without automerging. Both use stable `vX.Y.Z` source tags; older
-`custom-v*` build-service tags are not update candidates. Discovery starts for a
-tool after its first released Formula is added; absent recipes are not synthesized.
+Renovate maintains `Formula/privateheaderkit.rb`, updating its source URL and
+SHA-256 through PRs without automerging. It uses stable `vX.Y.Z` source tags.
+Custom Xcode Build Service uses the source-dispatched `update-formula.yml` path
+described under [Formulae](#formulae); Renovate does not propose its updates.
+Discovery starts for a tool after its first released Formula is added; absent
+recipes are not synthesized.
 For a new tool, update `scripts/prepared_update.py` and the scope in
 [.github/renovate-config.json](.github/renovate-config.json) separately.
 

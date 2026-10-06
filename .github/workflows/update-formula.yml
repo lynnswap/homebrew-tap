@@ -97,6 +97,8 @@ jobs:
     with:
       pull_request: ${{ needs.update.outputs.pull_request }}
       head_sha: ${{ needs.update.outputs.head_sha }}
+      source_tag: ${{ inputs.source_tag }}
+      source_sha: ${{ inputs.source_sha }}
 
   merge-binary:
     needs: [update, verify-binary]
