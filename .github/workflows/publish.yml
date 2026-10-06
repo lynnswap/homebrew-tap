@@ -308,7 +308,9 @@ jobs:
 
   notify-sources:
     needs: pr-pull
-    if: needs.pr-pull.outputs.source_repositories != '[]'
+    if: >-
+      !cancelled() && needs.pr-pull.result == 'success' &&
+      needs.pr-pull.outputs.source_repositories != '[]'
     permissions:
       contents: read
     strategy:
