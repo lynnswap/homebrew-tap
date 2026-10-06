@@ -230,6 +230,7 @@ jobs:
       id-token: write
       pull-requests: read
     uses: ./.github/workflows/publish.yml
+    secrets: inherit
     with:
       pull_request: ${{ inputs.pull_request }}
       head_sha: ${{ inputs.head_sha }}
