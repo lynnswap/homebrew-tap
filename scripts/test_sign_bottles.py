@@ -1,15 +1,84 @@
+import base64
 import io
 import contextlib
 import json
 import os
 from pathlib import Path
 import plistlib
+import subprocess
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import sign_bottles as signer
+
+
+CONFIGURATION = {'APPLE_TEAM_ID': 'TESTTEAM01', 'NOTARY_API_KEY_ID': 'TESTKEY001',
+                 'NOTARY_API_ISSUER_ID': 'test-issuer'}
+SECRET_FIXTURES = {
+    'DEVELOPER_ID_P12_BASE64': base64.b64encode(b'fake certificate for unit tests').decode(),
+    'DEVELOPER_ID_P12_PASSWORD': 'fake certificate password',
+    'NOTARY_API_PRIVATE_KEY': '-----BEGIN PRIVATE KEY-----\nfake test key\n-----END PRIVATE KEY-----',
+}
+
+
+class SigningCommandStub:
+    """Replace only subprocess execution; exercise real credential and archive handling."""
+    def __init__(self, case, *, accepted=True):
+        self.case = case
+        self.accepted = accepted
+        self.calls = []
+        self.credential_paths = []
+
+    def __call__(self, arguments, **kwargs):
+        self.calls.append(arguments)
+        self.case.assertTrue(set(signer.SECRET_NAMES).isdisjoint(kwargs['env']))
+        stdout, stderr = b'', b''
+        command = arguments[:2]
+        if command == ['/usr/bin/security', 'import']:
+            certificate = Path(arguments[2])
+            self.case.assertEqual(certificate.read_bytes(), b'fake certificate for unit tests')
+            self.case.assertEqual(certificate.stat().st_mode & 0o777, 0o600)
+            self.credential_paths.append(certificate)
+        elif command == ['/usr/bin/security', 'find-identity']:
+            stdout = (f'  1) {"A" * 40} "Developer ID Application: Test ({CONFIGURATION["APPLE_TEAM_ID"]})"\n'
+                      '  1 valid identities found\n').encode()
+        elif command == ['/usr/bin/security', 'list-keychains']:
+            stdout = b'"/Users/test/Library/Keychains/login.keychain-db"'
+        elif arguments[0] == '/usr/bin/security' and arguments[1] in (
+            'create-keychain', 'set-keychain-settings', 'unlock-keychain',
+            'set-key-partition-list', 'delete-keychain',
+        ):
+            pass
+        elif command == ['/usr/bin/codesign', '--force']:
+            target = Path(arguments[-1])
+            if target.suffix == '.app':
+                (target / 'Contents/CodeResources').write_text('fake signature')
+        elif command == ['/usr/bin/codesign', '--verify']:
+            pass
+        elif command == ['/usr/bin/codesign', '-d']:
+            stderr = (f'TeamIdentifier={CONFIGURATION["APPLE_TEAM_ID"]}\n'
+                      f'Identifier={signer.HOST_IDENTIFIER}\n'
+                      'Authority=Developer ID Application: Test\n'
+                      'flags=0x10000(runtime)\nTimestamp=test timestamp\n').encode()
+        elif command == ['/usr/bin/ditto', '-c']:
+            Path(arguments[-1]).write_bytes(b'fake notarization zip')
+        elif arguments[:3] == ['/usr/bin/xcrun', 'notarytool', 'submit']:
+            key = Path(arguments[arguments.index('--key') + 1])
+            self.case.assertEqual(key.read_text().strip(), SECRET_FIXTURES['NOTARY_API_PRIVATE_KEY'])
+            self.case.assertEqual(key.stat().st_mode & 0o777, 0o600)
+            self.credential_paths.append(key)
+            stdout = json.dumps({'id': 'test-submission',
+                                 'status': 'Accepted' if self.accepted else 'Invalid'}).encode()
+        elif arguments[:3] == ['/usr/bin/xcrun', 'notarytool', 'log']:
+            stdout = json.dumps({'message': 'test rejection',
+                                 'detail': SECRET_FIXTURES['NOTARY_API_PRIVATE_KEY']}).encode()
+        elif arguments[:3] == ['/usr/bin/xcrun', 'stapler', 'staple']:
+            (Path(arguments[-1]) / 'Contents/ticket').write_text('fake ticket')
+        else:
+            self.case.fail(f'Unexpected native command: {command}')
+        return subprocess.CompletedProcess(arguments, 0, stdout, stderr)
 
 
 class BottleSigningTests(unittest.TestCase):
@@ -136,6 +205,51 @@ class BottleSigningTests(unittest.TestCase):
         self.assertEqual(signer.signing_identity(identity, '58KPFKMJJW'), 'A' * 40)
         with self.assertRaises(signer.ReleaseError):
             signer.signing_identity(identity, 'WRONGTEAM1')
+
+    def test_missing_environment_secret_fails_before_native_commands(self):
+        for missing in signer.SECRET_NAMES:
+            with self.subTest(secret=missing), patch.dict(os.environ, {**SECRET_FIXTURES, missing: ''}):
+                with patch.object(signer.subprocess, 'run') as run:
+                    with self.assertRaisesRegex(signer.ReleaseError, f'{missing} is required for release signing'):
+                        signer.sign_bottle(self.source, self.root / 'signed', CONFIGURATION)
+                    run.assert_not_called()
+                self.assertTrue(set(signer.SECRET_NAMES).isdisjoint(os.environ))
+                self.assertFalse((self.root / 'signed').exists())
+
+    def test_ci_credentials_flow_through_signing_and_are_removed(self):
+        commands = SigningCommandStub(self)
+        output = self.root / 'signed'
+        report = io.StringIO()
+        with patch.dict(os.environ, SECRET_FIXTURES), patch.object(signer.subprocess, 'run', side_effect=commands):
+            with contextlib.redirect_stdout(report):
+                signer.sign_bottle(self.source, output, CONFIGURATION)
+            self.assertTrue(set(signer.SECRET_NAMES).isdisjoint(os.environ))
+        self.assertEqual(json.loads(report.getvalue())['notarization_id'], 'test-submission')
+        self.assertEqual(commands.calls[-2][0:2], ['/usr/bin/security', 'list-keychains'])
+        self.assertEqual(commands.calls[-2][-1], '/Users/test/Library/Keychains/login.keychain-db')
+        self.assertEqual(commands.calls[-1][0:2], ['/usr/bin/security', 'delete-keychain'])
+        self.assertTrue(commands.credential_paths)
+        self.assertTrue(all(not path.parent.exists() for path in commands.credential_paths))
+        with tarfile.open(output / self.archive.name) as archive:
+            names = archive.getnames()
+            self.assertIn('xcode-mcpkit/1.2.3/libexec/XcodeMCPNativeHost.app/Contents/ticket', names)
+            self.assertFalse(any(name.endswith(('.p8', '.p12', '.keychain-db')) for name in names))
+        for secret in SECRET_FIXTURES.values():
+            self.assertNotIn(secret, report.getvalue())
+
+    def test_notarization_rejection_cleans_credentials_and_does_not_publish_output(self):
+        commands = SigningCommandStub(self, accepted=False)
+        output = self.root / 'signed'
+        with patch.dict(os.environ, SECRET_FIXTURES), patch.object(signer.subprocess, 'run', side_effect=commands):
+            with self.assertRaisesRegex(signer.ReleaseError, 'Notarization rejected') as result:
+                signer.sign_bottle(self.source, output, CONFIGURATION)
+            self.assertTrue(set(signer.SECRET_NAMES).isdisjoint(os.environ))
+        self.assertEqual(commands.calls[-1][0:2], ['/usr/bin/security', 'delete-keychain'])
+        self.assertTrue(all(not path.parent.exists() for path in commands.credential_paths))
+        self.assertFalse(output.exists())
+        self.assertIn('[REDACTED]', str(result.exception))
+        for secret in SECRET_FIXTURES.values():
+            self.assertNotIn(secret, str(result.exception))
 
 
 if __name__ == '__main__':

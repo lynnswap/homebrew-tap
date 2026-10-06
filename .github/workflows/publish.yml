@@ -318,5 +318,6 @@ jobs:
       matrix:
         source_repository: ${{ fromJSON(needs.pr-pull.outputs.source_repositories) }}
     uses: ./.github/workflows/notify-source.yml
+    secrets: inherit
     with:
       source_repository: ${{ matrix.source_repository }}
