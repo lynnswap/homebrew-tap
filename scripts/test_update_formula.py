@@ -38,7 +38,9 @@ class Source:
 class Tap:
     repository = "lynnswap/homebrew-tap"
 
-    def __init__(self, current=None):
+    def __init__(self, current=None, source=update.SOURCE):
+        self.formula_path = f"Formula/{update.TOOLS[source]}.rb"
+        self.branch_prefix = f"codex/release-{update.TOOLS[source]}-"
         self.current = current
         self.branch = None
         self.proposed = None
@@ -60,17 +62,17 @@ class Tap:
             return dict(status="ahead" if self.ancestor else "diverged")
         if path.startswith("contents/Formula?ref="):
             value = self.current if path.endswith(MAIN) else self.proposed
-            return [dict(path=update.FORMULA)] if value else []
-        if path.startswith("contents/Formula/xcode-mcpkit.rb?ref="):
+            return [dict(path=self.formula_path)] if value else []
+        if path.startswith(f"contents/{self.formula_path}?ref="):
             value = self.current if path.endswith(MAIN) else self.proposed
             return dict(sha="c" * 40, content=base64.b64encode(value.encode()).decode())
         if path.startswith("git/matching-refs/heads/"):
-            return [dict(ref="refs/heads/" + update.BRANCH_PREFIX + TAG,
+            return [dict(ref="refs/heads/" + self.branch_prefix + TAG,
                          object=dict(sha=self.branch))] if self.branch else []
         if path == "git/refs" and method == "POST":
             self.branch = data["sha"]
             return {}
-        if path == "contents/" + update.FORMULA and method == "PUT":
+        if path == "contents/" + self.formula_path and method == "PUT":
             self.proposed = base64.b64decode(data["content"]).decode()
             self.branch = SHA
             return {}
@@ -182,6 +184,68 @@ class UpdateFormulaTests(unittest.TestCase):
             with self.assertRaises(CandidateError):
                 update.propose(github, TAG, SHA, FORMULA)
             self.assertEqual(len(github.writes), writes)
+
+
+class BinarySource(Source):
+    repository = update.BINARY_SOURCE
+
+    def __init__(self):
+        super().__init__()
+        self.formula = ('class CustomXcodeBuildService < Formula\n'
+                        f'  url "https://github.com/{self.repository}/releases/download/{TAG}/{update.BINARY_ARCHIVE}"\n'
+                        '  version "1.2.3"\n'
+                        f'  sha256 "{SOURCE_DIGEST}"\nend\n')
+        self.formula_digest = hashlib.sha256(self.formula.encode()).hexdigest()
+        self.release = dict(tag_name=TAG, target_commitish=SHA, draft=False, prerelease=False,
+            assets=[dict(name=name, state="uploaded", digest="sha256:" + digest,
+                         browser_download_url=f"https://github.com/{self.repository}/releases/download/{TAG}/{name}")
+                    for name, digest in ((update.BINARY_ARCHIVE, SOURCE_DIGEST),
+                                         ("custom-xcode-build-service.rb", self.formula_digest))])
+
+    def api(self, path):
+        if path == "releases/tags/" + TAG:
+            return copy.deepcopy(self.release)
+        return super().api(path)
+
+
+class BinaryUpdateTests(unittest.TestCase):
+    def prepared(self, source):
+        with patch.object(update, "urlopen", return_value=io.BytesIO(source.formula.encode())):
+            return update.prepared_formula(source, TAG, SHA, SOURCE_DIGEST, source.formula_digest)
+
+    def test_public_binary_recipe_replaces_the_source_recipe_and_bottle(self):
+        source = BinarySource()
+        self.assertEqual(self.prepared(source), source.formula)
+        old = ('class CustomXcodeBuildService < Formula\n'
+               '  url "https://github.com/lynnswap/swift-build/archive/refs/tags/v0.3.4.tar.gz"\n'
+               '  bottle do\n    root_url "old"\n  end\nend\n')
+        tap = Tap(old, source=source.repository)
+        result = update.propose(tap, TAG, SHA, source.formula, source.repository)
+        self.assertEqual(result["status"], "created-pr")
+        self.assertEqual(tap.proposed, source.formula)
+        content_write = next(call for call in tap.writes if call[1] == "PUT")
+        self.assertEqual(content_write[0], "contents/" + update.BINARY_FORMULA)
+        pull = next(call[2] for call in tap.writes if call[0] == "pulls")
+        self.assertEqual(pull["head"], "codex/release-custom-xcode-build-service-v1.2.3")
+        self.assertNotIn("Bottle CI", pull["body"])
+        self.assertEqual(update.propose(tap, TAG, SHA, source.formula, source.repository)["status"], "existing-pr")
+
+    def test_unpublished_or_different_binary_release_is_not_proposed(self):
+        for mutation in (lambda r: r.update(draft=True), lambda r: r.update(prerelease=True),
+                         lambda r: r.update(target_commitish=MAIN),
+                         lambda r: r["assets"][0].update(digest="sha256:" + "0" * 64),
+                         lambda r: r["assets"][1].update(digest="sha256:" + "0" * 64),
+                         lambda r: r["assets"][0].update(browser_download_url="https://example.invalid/binary")):
+            source = BinarySource()
+            mutation(source.release)
+            with self.subTest(mutation=mutation), self.assertRaises(CandidateError):
+                self.prepared(source)
+
+    def test_recipe_download_is_verified_before_decoding_or_proposing_it(self):
+        source = BinarySource()
+        with patch.object(update, "urlopen", return_value=io.BytesIO(b"modified recipe")):
+            with self.assertRaisesRegex(CandidateError, "downloaded Formula"):
+                update.prepared_formula(source, TAG, SHA, SOURCE_DIGEST, source.formula_digest)
 
 
 if __name__ == "__main__":

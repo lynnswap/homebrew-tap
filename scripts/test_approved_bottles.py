@@ -109,13 +109,20 @@ class ApprovedBottlesTests(unittest.TestCase):
         github.pull["user"]["login"] = "github-actions[bot]"
         self.assertEqual(guard.candidate(github, 3, SHA)["pull_request"], 3)
 
+    def test_custom_service_does_not_enter_the_bottle_publisher(self):
+        github = FakeGitHub()
+        github.files[0]["filename"] = "Formula/custom-xcode-build-service.rb"
+        with self.assertRaisesRegex(guard.CandidateError, "no tap bottles"):
+            guard.candidate(github, 3, SHA)
+        self.assertFalse(any("actions/" in path for path in github.calls))
+
     def test_final_ci_job_can_publish_after_its_producer_checks_finish(self):
         github = FakeGitHub()
         github.run.update(event="workflow_dispatch", head_branch="main", status="in_progress", conclusion=None,
                           display_title=f"Bottle CI for PR 3 at {SHA}")
-        names = ["guard-contracts", "select-builder", "test-bot", "Install the custom service bottle on macOS 26"]
+        names = ["guard-contracts", "select-builder", "test-bot", "Install the XcodeMCPKit bottle"]
         github.jobs = [dict(name=name,id=i,run_attempt=1,status="completed",conclusion="success") for i,name in enumerate(names)]
-        github.files[0]['filename'] = 'Formula/custom-xcode-build-service.rb'
+        github.files[0]['filename'] = 'Formula/xcode-mcpkit.rb'
         original = guard.candidate(github,3,SHA,current_ci_run=100)
         self.assertEqual(original['ci_run_id'],100)
         github.run['run_attempt'] = 2

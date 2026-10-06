@@ -10,7 +10,7 @@ def register_bottles(directory):
     for path in directory.glob("*.bottle.json"):
         metadata = json.loads(path.read_text())
         for entry in metadata.values():
-            if entry["formula"]["name"] not in ("custom-xcode-build-service", "xcode-mcpkit"):
+            if entry["formula"]["name"] != "xcode-mcpkit":
                 continue
             tags = entry["bottle"]["tags"]
             for tag in list(tags):

@@ -21,14 +21,13 @@ class SourceNotificationTests(unittest.TestCase):
         self.assertEqual(repositories([
             "Formula/xcode-mcpkit.rb", "Formula/custom-xcode-build-service.rb",
             "Formula/unrelated.rb", "README.md", "Formula/xcode-mcpkit.rb",
-        ]), ["lynnswap/XcodeMCPKit", "lynnswap/swift-build"])
-        self.assertEqual(repositories(["Formula/unrelated.rb"]), [])
+        ]), ["lynnswap/XcodeMCPKit"])
+        self.assertEqual(repositories(["Formula/unrelated.rb", "Formula/custom-xcode-build-service.rb"]), [])
 
     def test_each_source_dispatches_its_existing_resume_workflow_on_main(self):
         for repository, workflow in (
             ("lynnswap/XcodeMCPKit", "resume-release.yml"),
             ("lynnswap/PrivateHeaderKit", "resume-release.yml"),
-            ("lynnswap/swift-build", "custom-xcode-build-service-resume.yml"),
         ):
             with self.subTest(repository=repository):
                 github = GitHubStub(repository)

@@ -106,7 +106,7 @@ def matching_runs(github, workflow_id, number, head_sha):
     return sorted(runs.values(), key=lambda run: (run["created_at"], run["id"]), reverse=True)
 
 
-def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
+def formula_proposal(github, number, head_sha):
     if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
         raise CandidateError("Supply the reviewed full lowercase PR-head SHA.")
     pull = github.api(f"pulls/{number}")
@@ -124,6 +124,17 @@ def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
     if not formula_changes(files):
         raise CandidateError("Bottle publication accepts only added or modified Formula files.")
 
+    return files
+
+
+def needs_bottles(files):
+    return formula_changes(files) and all(item["filename"] != "Formula/custom-xcode-build-service.rb" for item in files)
+
+
+def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
+    files = formula_proposal(github, number, head_sha)
+    if not needs_bottles(files):
+        raise CandidateError("The custom build service uses upstream binaries and has no tap bottles to publish.")
     workflow = github.api("actions/workflows/tests.yml")
     runs = matching_runs(github, workflow["id"], number, head_sha)
     if not runs:
@@ -157,9 +168,6 @@ def candidate(github, number, head_sha, event_run_id=None, current_ci_run=None):
             if not failed or any(not job['name'].startswith('publish-tested-bottles / ') for job in failed):
                 raise CandidateError("Only failed dependent publication can reuse successful bottle CI.")
         required = ["guard-contracts", "select-builder", "test-bot"]
-        if any(item['filename'] == 'Formula/custom-xcode-build-service.rb'
-               for item in github.pages(f"pulls/{number}/files")):
-            required.append("Install the custom service bottle on macOS 26")
         if any(item['filename'] == 'Formula/xcode-mcpkit.rb'
                for item in github.pages(f"pulls/{number}/files")):
             required.append("Install the XcodeMCPKit bottle")
@@ -258,7 +266,7 @@ def main():
                 write_outputs(args.github_output, None)
                 print("The completed CI no longer describes an open publication candidate.")
                 return 0
-            if not formula_changes(github.pages(f"pulls/{number}/files")):
+            if not needs_bottles(github.pages(f"pulls/{number}/files")):
                 write_outputs(args.github_output, None)
                 print("This pull request does not require bottle publication.")
                 return 0

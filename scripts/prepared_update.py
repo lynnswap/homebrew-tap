@@ -12,7 +12,6 @@ from approved_bottles import CandidateError, GitHub
 
 SOURCES = {
     "Formula/privateheaderkit.rb": "lynnswap/PrivateHeaderKit",
-    "Formula/custom-xcode-build-service.rb": "lynnswap/swift-build",
 }
 
 

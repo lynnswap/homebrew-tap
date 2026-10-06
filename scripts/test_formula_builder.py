@@ -12,8 +12,8 @@ class FormulaBuilderTests(unittest.TestCase):
         self.assertEqual(value["xcode_mcpkit"], "true")
         self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="modified")])["custom_service"], "true")
 
-    def test_custom_service_uses_xcode_27(self):
-        self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="added")])["runner"], "xcode-27")
+    def test_custom_service_installs_the_upstream_binary_on_macos_26(self):
+        self.assertEqual(builder([dict(filename="Formula/custom-xcode-build-service.rb", status="added")])["runner"], "macos-26")
 
     def test_existing_privateheaderkit_delivery_keeps_its_macos_26_bottle(self):
         self.assertEqual(builder([dict(filename="Formula/privateheaderkit.rb", status="modified")])["runner"], "macos-26")

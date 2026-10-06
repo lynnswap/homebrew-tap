@@ -134,9 +134,9 @@ jobs:
 
       - run: brew test-bot --only-tap-syntax
       - run: brew test-bot --only-formulae
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && needs.select-builder.outputs.custom_service != 'true'
       - name: Build and test the pinned native Formulae
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && needs.select-builder.outputs.custom_service != 'true'
         env:
           FORMULAE: ${{ steps.pinned.outputs.formulae }}
           ADDED_FORMULAE: ${{ steps.pinned.outputs.added_formulae }}
@@ -144,12 +144,12 @@ jobs:
           brew test-bot --only-formulae --testing-formulae="$FORMULAE" --added-formulae="$ADDED_FORMULAE"
 
       - name: Register native bottles for macOS 26 and later
-        if: (needs.select-builder.outputs.custom_service == 'true' || needs.select-builder.outputs.xcode_mcpkit == 'true') && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        if: needs.select-builder.outputs.xcode_mcpkit == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         run: python3 "$RUNNER_TEMP/trusted-ci/bottle_tags.py" .
 
       - name: Upload bottles as artifact
         id: bottles
-        if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        if: always() && needs.select-builder.outputs.custom_service != 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bottles_macos-arm64_${{ github.run_id }}_${{ github.run_attempt }}
@@ -157,47 +157,16 @@ jobs:
           retention-days: 35
 
   install-custom-service:
-    name: Install the custom service bottle on macOS 26
+    name: Install the upstream custom service archive
     needs: [select-builder, test-bot]
     if: needs.select-builder.outputs.custom_service == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
-    runs-on: macos-26
-    timeout-minutes: 30
     permissions:
       contents: read
-    steps:
-      - uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
-        with:
-          token: ${{ github.token }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ needs.test-bot.outputs.artifact_id }}
-          path: ${{ runner.temp }}/bottles
-          digest-mismatch: error
-      - name: Install the tested bottle without forcing bottle selection
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || inputs.head_sha }}
-          HOMEBREW_NO_AUTO_UPDATE: '1'
-          HOMEBREW_NO_INSTALL_CLEANUP: '1'
-        run: |
-          formula=lynnswap/tap/custom-xcode-build-service
-          tap_root="$(brew --repository lynnswap/tap)"
-          git -C "$tap_root" fetch origin "$HEAD_SHA"
-          git -C "$tap_root" checkout --detach "$HEAD_SHA"
-          brew bottle --merge --write --no-commit "$RUNNER_TEMP/bottles/"custom-xcode-build-service--*.bottle.json
-          cache="$(brew --cache --force-bottle "$formula")"
-          mkdir -p "$(dirname "$cache")"
-          cp "$RUNNER_TEMP/bottles/"custom-xcode-build-service--*.bottle*.tar.gz "$cache"
-          brew install "$formula"
-          brew info --json=v2 "$formula" | python3 -c '
-          import json, sys
-          if not json.load(sys.stdin)["formulae"][0]["installed"][0]["poured_from_bottle"]:
-              sys.exit("Homebrew rebuilt the service instead of installing its macOS 26 bottle.")
-          '
-          prefix="$(brew --prefix "$formula")"
-          "$prefix/bin/custom-xcode-build-service" --version
-          python3 "$prefix/share/custom-xcode-build-service/verify.py" verify-payload \
-            --payload "$prefix/libexec" \
-            --fixture-dir "$prefix/share/custom-xcode-build-service/CommandLineTool"
+      pull-requests: read
+    uses: ./.github/workflows/test-binary-formula.yml
+    with:
+      pull_request: ${{ format('{0}', github.event.pull_request.number || inputs.pull_request) }}
+      head_sha: ${{ github.event.pull_request.head.sha || inputs.head_sha }}
 
   install-xcodemcpkit:
     name: Install the XcodeMCPKit bottle
@@ -248,11 +217,11 @@ jobs:
             "$prefix/share/xcode-mcpkit/smoke-homebrew.py" --prefix "$prefix" --version "v$version"
 
   publish-tested-bottles:
-    needs: [guard-contracts, test-bot, install-custom-service, install-xcodemcpkit]
+    needs: [guard-contracts, select-builder, test-bot, install-xcodemcpkit]
     if: >-
       always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
       needs.guard-contracts.result == 'success' && needs.test-bot.result == 'success' &&
-      (needs.install-custom-service.result == 'success' || needs.install-custom-service.result == 'skipped') &&
+      needs.select-builder.outputs.custom_service != 'true' &&
       (needs.install-xcodemcpkit.result == 'success' || needs.install-xcodemcpkit.result == 'skipped')
     permissions:
       actions: read

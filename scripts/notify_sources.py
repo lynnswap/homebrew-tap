@@ -11,8 +11,6 @@ from approved_bottles import CandidateError, GitHub
 SOURCES = {
     "Formula/xcode-mcpkit.rb": ("lynnswap/XcodeMCPKit", "resume-release.yml"),
     "Formula/privateheaderkit.rb": ("lynnswap/PrivateHeaderKit", "resume-release.yml"),
-    "Formula/custom-xcode-build-service.rb": (
-        "lynnswap/swift-build", "custom-xcode-build-service-resume.yml"),
 }
 
 

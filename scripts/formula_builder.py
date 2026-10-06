@@ -16,8 +16,10 @@ BUILDERS = {
 
 def builder(files):
     paths = {item["filename"] for item in files if formula_path(item["filename"]) and item["status"] != "removed"}
+    if "Formula/custom-xcode-build-service.rb" in paths and len(paths) > 1:
+        raise CandidateError("Submit the upstream binary Formula separately from bottle-building Formulae.")
     runners = {
-        "xcode-27" if path in ("Formula/custom-xcode-build-service.rb", "Formula/xcode-mcpkit.rb") else "macos-26"
+        "xcode-27" if path == "Formula/xcode-mcpkit.rb" else "macos-26"
         for path in paths
     }
     if len(runners) > 1:
