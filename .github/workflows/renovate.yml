@@ -3,7 +3,6 @@ name: Propose Homebrew updates
 on:
   schedule:
     - cron: "17 23 * * *"
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       source_repository:

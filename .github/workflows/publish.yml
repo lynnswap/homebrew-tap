@@ -229,6 +229,8 @@ jobs:
       (needs.validate.outputs.requires_signing != 'true' || needs.verify-signed-xcodemcpkit.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      source_repositories: ${{ steps.sources.outputs.repositories }}
     environment: homebrew-publish
     concurrency:
       group: homebrew-bottle-publication
@@ -296,3 +298,25 @@ jobs:
           FORMULA_PATHS: ${{ steps.publish_bottles.outputs.formula_paths }}
           PUBLICATION_BASE_SHA: ${{ steps.publish_bottles.outputs.publication_base_sha }}
         run: bash scripts/push_bottles.sh "$FORMULA_PATHS" "$PUBLICATION_BASE_SHA"
+      - name: Select sources for the published Formulae
+        id: sources
+        env:
+          FORMULA_PATHS: ${{ steps.publish_bottles.outputs.formula_paths }}
+        run: |
+          python3 scripts/notify_sources.py targets --formula-paths "$FORMULA_PATHS" \
+            --github-output "$GITHUB_OUTPUT"
+
+  notify-sources:
+    needs: pr-pull
+    if: >-
+      !cancelled() && needs.pr-pull.result == 'success' &&
+      needs.pr-pull.outputs.source_repositories != '[]'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        source_repository: ${{ fromJSON(needs.pr-pull.outputs.source_repositories) }}
+    uses: ./.github/workflows/notify-source.yml
+    with:
+      source_repository: ${{ matrix.source_repository }}

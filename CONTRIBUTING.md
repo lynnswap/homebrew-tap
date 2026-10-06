@@ -36,10 +36,10 @@ and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
 Native Formula CI calls **brew pr-pull** as its final dependent job after the
 producer checks and applicable macOS 26 bottle installation succeed. It does not
 rely on a `workflow_run` event to start publication for a dispatched native PR.
-Standalone publication and periodic discovery remain recovery paths for already
+Standalone publication and daily/manual maintenance remain recovery paths for already
 completed CI. If the dependent publisher fails, a manual publication retry reuses
 its successful producer checks and original bottle artifact; real producer
-failures still require new CI. Periodic discovery does not retry real publication
+failures still require new CI. Daily maintenance does not retry real publication
 failures automatically. The final job verifies the canonical parent run, completed producer
 checks, PR head, and immutable artifact before any publication side effects.
 
@@ -62,6 +62,33 @@ Concurrent changes to the same Formula require new bottle CI and validation;
 unrelated Formula or documentation changes can be preserved during push recovery.
 Documentation-only PRs do not publish bottles.
 
+After the bottle upload and Formula push succeed, the publisher calls
+**Notify source release** for each affected registered source repository. That
+workflow dispatches the source's existing resume workflow using an App token
+restricted to that repository and `Actions: write`. The source verifies its
+original approval, preparation receipt, and public bottle before resuming.
+
+If notification fails, the bottles and Formula remain published. Rerun **Notify
+source release** for that source, or manually dispatch its resume workflow;
+bottle publication does not need to run again. The notifier accepts only
+XcodeMCPKit, PrivateHeaderKit, and swift-build, and always targets `main`.
+
+Configure a notification GitHub App with **Actions: read and write**, installed
+only on these three source repositories. Create a separate `source-notification`
+Environment with a required maintainer reviewer, `main` as its only deployment
+branch, and administrator bypass disabled. The sole maintainer may approve their
+own run. Store variable `SOURCE_DISPATCH_APP_CLIENT_ID` and secret
+`SOURCE_DISPATCH_APP_PRIVATE_KEY` in this Environment. The notification job cannot
+access the key until its deployment is approved. It checks out trusted code at
+the workflow commit and requests a token for only the selected source repository;
+the token is revoked when the job ends. Keep the private key out of logs and
+artifacts, and remove local provisioning copies after storing the secret.
+The existing source-to-tap App keeps its separate installation and credentials.
+
+Successful source release-run completion also triggers resumption, covering a
+notification received before the original run finishes. Manual dispatch remains
+available for recovery.
+
 To retry, dispatch **brew pr-pull** on `main` with the Formula PR number and its
 full reviewed head SHA. A changed head, newer or failed CI, replaced artifact or
 expired artifact requires new candidate validation. Bottle artifacts are
@@ -70,7 +97,8 @@ retained for 35 days.
 In **Settings → Environments → homebrew-publish**, allow only `main` and leave
 required reviewers and wait timers empty. Build and validation jobs are read-only;
 only the publication job receives Contents write, attestation, and identity-token
-permissions. Publication does not require an additional token or secret.
+permissions. Bottle uploads and Formula updates use the repository token;
+source notifications use the App credentials described above.
 
 For XcodeMCPKit, configure a separate `release-signing` Environment with a required
 maintainer reviewer, `main` as its only deployment branch, and administrator
@@ -143,13 +171,13 @@ or update scope. The existing tools below retain their Renovate flow.
 
 Dependabot proposes weekly updates to workflow actions. **Propose Homebrew
 updates** runs Renovate daily at 08:17 Japan time or on manual dispatch from
-`main`. A short read-only check also runs every 15 minutes: a newer public stable
-tag for a configured tool starts Renovate unless an open Formula PR already proposes
-it. Existing proposals do not repeatedly start the update writer. After discovery
+`main`. Approved source releases notify the tap when a public stable tag is ready.
+The tap starts Renovate if the tag needs a Formula proposal; existing proposals
+are reused. There is no 15-minute discovery schedule. After notification
 or maintenance, a separate trusted job starts read-only bottle CI for native
 Formula proposals that do not already have CI. Source tags initiate tap builds before core
 stable publication; the daily/manual runs still perform regular maintenance.
-Maintenance and discovery runs share a FIFO queue, so a discovery tick cannot
+Maintenance and notification runs share a FIFO queue, so a notification cannot
 replace a pending manual or daily maintenance request.
 
 A prepared source can dispatch **Propose Homebrew updates** immediately on
@@ -159,7 +187,7 @@ whether its Formula needs a proposal. A repeated notification reuses an existing
 proposal. A valid release notification removes Renovate's hourly PR throttle for
 that run; scheduled and ordinary manual maintenance keep the configured limit.
 The existing native PR CI and publisher still own validation, bottle publication,
-and merge. Periodic discovery remains available for recovery.
+and merge. Daily and manual maintenance remain available for recovery.
 
 Renovate maintains `Formula/privateheaderkit.rb` and
 `Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
