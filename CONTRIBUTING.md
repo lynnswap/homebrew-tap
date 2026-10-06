@@ -6,13 +6,12 @@ Add or update each tool in its own `Formula/<name>.rb` pull request. Keep build
 dependencies, installation steps and functional tests in the Formula. Source URLs
 must be public before bottle CI runs.
 
-The shared **brew test-bot** workflow checks changed formulae and builds bottles.
+The shared **brew test-bot** workflow checks changed formulae. Source recipes build
+bottles; Custom Xcode Build Service installs its published upstream binary.
 PrivateHeaderKit builds on Apple Silicon macOS 26 with Xcode 26.6, matching its
-source release's published-bottle verification. Custom Xcode Build Service uses
-the `xcode-27` runner with Xcode 27.0 (macOS 27), targeting macOS 26. Its bottle is
-registered as `arm64_tahoe`, so Homebrew installs it on macOS 26 and later.
-The receipt retains the actual build environment. CI also installs that bottle
-on macOS 26 without forcing bottle selection and runs the packaged verification.
+source release's published-bottle verification. Custom Xcode Build Service is
+installed on macOS 26 from the same archive that mise uses. The source repository
+owns compilation and Xcode compatibility checks.
 Each tool documents its own requirements. Keep Formulae requiring
 different builders in separate PRs; `scripts/formula_builder.py` selects the
 builder from the changed Formula paths.
@@ -22,11 +21,19 @@ workflow and follow the owning project's
 [source-preparation guide](https://github.com/lynnswap/PrivateHeaderKit/blob/main/CONTRIBUTING.md#releases).
 Keep installation, dependency and test changes synchronized with that recipe.
 
-For Custom Xcode Build Service, use the generated
-`custom-xcode-build-service.rb` from its first `v*` release. The recipe reads the
-source commit from the downloaded Git archive, so URL/checksum updates do not
-leave stale commit metadata behind. See its
-[distribution guide](https://github.com/lynnswap/swift-build/blob/main/Utilities/CustomXcodeBuildService/README.md#releases).
+For Custom Xcode Build Service, the source repository dispatches
+`update-formula.yml` after publishing its binary release. The updater verifies
+the release, archive digest, and recipe digest, then creates a Formula-only PR.
+The read-only `test-binary-formula.yml` workflow installs the archive, checks the
+CLI, and compares its manifest with the published source commit. A separate job
+merges the exact tested PR head. It does not create a tap bottle or notify the
+source to resume publication. Other Formulae keep their bottle workflows.
+
+The source release remains usable through mise if the tap update fails. Rerun the
+failed jobs in **Update approved Formula** to reuse the existing proposal. A changed
+or closed proposal requires inspection. Existing Homebrew installations upgrade
+through the same `brew upgrade` command after the binary recipe is merged. See the
+[source release guide](https://github.com/lynnswap/swift-build/blob/main/Utilities/CustomXcodeBuildService/RELEASING.md).
 
 See Homebrew's [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
 and [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook).
@@ -71,10 +78,10 @@ original approval, preparation receipt, and public bottle before resuming.
 If notification fails, the bottles and Formula remain published. Rerun **Notify
 source release** for that source, or manually dispatch its resume workflow;
 bottle publication does not need to run again. The notifier accepts only
-XcodeMCPKit, PrivateHeaderKit, and swift-build, and always targets `main`.
+XcodeMCPKit and PrivateHeaderKit, and always targets `main`.
 
 Configure a notification GitHub App with **Actions: read and write**, installed
-only on these three source repositories. Create a separate `source-notification`
+only on these source repositories. Create a separate `source-notification`
 Environment with a required maintainer reviewer, `main` as its only deployment
 branch, and administrator bypass disabled. The sole maintainer may approve their
 own run. Store variable `SOURCE_DISPATCH_APP_CLIENT_ID` and secret
@@ -189,11 +196,12 @@ that run; scheduled and ordinary manual maintenance keep the configured limit.
 The existing native PR CI and publisher still own validation, bottle publication,
 and merge. Daily and manual maintenance remain available for recovery.
 
-Renovate maintains `Formula/privateheaderkit.rb` and
-`Formula/custom-xcode-build-service.rb`, updating their source URL and SHA-256
-through PRs without automerging. Both use stable `vX.Y.Z` source tags; older
-`custom-v*` build-service tags are not update candidates. Discovery starts for a
-tool after its first released Formula is added; absent recipes are not synthesized.
+Renovate maintains `Formula/privateheaderkit.rb`, updating its source URL and
+SHA-256 through PRs without automerging. It uses stable `vX.Y.Z` source tags.
+Custom Xcode Build Service uses the source-dispatched `update-formula.yml` path
+described under [Formulae](#formulae); Renovate does not propose its updates.
+Discovery starts for a tool after its first released Formula is added; absent
+recipes are not synthesized.
 For a new tool, update `scripts/prepared_update.py` and the scope in
 [.github/renovate-config.json](.github/renovate-config.json) separately.
 
@@ -250,9 +258,8 @@ Each source repository must update its pin deliberately and include `install.sh`
 in its verified release checksums. Merge shared changes before publishing a
 source release that uses the new pin.
 
-The Custom Xcode Build Service installer must first ship in a source release
-whose CLI implements `__migrate-standalone` (v0.3.4 does not). Its source release
-workflow must verify publication of that release's Homebrew formula and bottle
-before publishing `install.sh`. Adding the shared script here does not publish
-an installer or change the current formula; the corresponding source integration
-is tracked in [swift-build #38](https://github.com/lynnswap/swift-build/issues/38).
+Custom Xcode Build Service does not publish the shared installer in its binary
+releases. Its supported installation entry points are Homebrew and mise; either
+package's `use custom` command migrates the old standalone selection. The internal
+`__migrate-standalone` hook remains available to existing shared-installer callers
+after the new Formula is public.

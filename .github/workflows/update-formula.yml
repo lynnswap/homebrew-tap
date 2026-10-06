@@ -1,4 +1,4 @@
-name: Update approved source Formula
+name: Update approved Formula
 
 run-name: Update ${{ inputs.source_repository }} ${{ inputs.source_tag }} at ${{ inputs.source_sha }}
 
@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       source_sha256:
-        description: Prepared public source archive SHA-256
+        description: Prepared public source or binary archive SHA-256
         required: true
         type: string
       formula_sha256:
@@ -66,7 +66,7 @@ jobs:
 
   dispatch-ci:
     needs: update
-    if: needs.update.outputs.pull_request != ''
+    if: needs.update.outputs.pull_request != '' && inputs.source_repository != 'lynnswap/swift-build'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -85,4 +85,40 @@ jobs:
           HEAD_SHA: ${{ needs.update.outputs.head_sha }}
         run: |
           python3 scripts/dispatched_ci.py dispatch --repo "$GITHUB_REPOSITORY" \
+            --pr "$PULL_REQUEST" --head "$HEAD_SHA"
+
+  verify-binary:
+    needs: update
+    if: needs.update.outputs.pull_request != '' && inputs.source_repository == 'lynnswap/swift-build'
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/test-binary-formula.yml
+    with:
+      pull_request: ${{ needs.update.outputs.pull_request }}
+      head_sha: ${{ needs.update.outputs.head_sha }}
+      source_tag: ${{ inputs.source_tag }}
+      source_sha: ${{ inputs.source_sha }}
+
+  merge-binary:
+    needs: [update, verify-binary]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: homebrew-publish
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout trusted merge code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Merge only the tested Formula revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ needs.update.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.update.outputs.head_sha }}
+        run: |
+          python3 scripts/binary_formula.py merge --repo "$GITHUB_REPOSITORY" \
             --pr "$PULL_REQUEST" --head "$HEAD_SHA"

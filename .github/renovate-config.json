@@ -16,17 +16,8 @@
       "homebrew"
     ],
     "includePaths": [
-      "Formula/privateheaderkit.rb",
-      "Formula/custom-xcode-build-service.rb"
+      "Formula/privateheaderkit.rb"
     ],
-    "automerge": false,
-    "packageRules": [
-      {
-        "matchFileNames": [
-          "Formula/custom-xcode-build-service.rb"
-        ],
-        "allowedVersions": "/^v\\d+\\.\\d+\\.\\d+$/"
-      }
-    ]
+    "automerge": false
   }
 }

@@ -11,15 +11,14 @@ import unittest
 
 class BottleInstallationTests(unittest.TestCase):
     def test_each_installation_job_selects_only_its_own_bottle_and_recipe(self):
-        for workflow_name, job, name in (("tests.yml", "install-custom-service", "custom-xcode-build-service"),
-                                         ("tests.yml", "install-xcodemcpkit", "xcode-mcpkit"),
+        for workflow_name, job, name in (("tests.yml", "install-xcodemcpkit", "xcode-mcpkit"),
                                          ("publish.yml", "verify-signed-xcodemcpkit", "xcode-mcpkit")):
             workflow = (Path(__file__).resolve().parents[1]/".github/workflows"/workflow_name).read_text()
             with self.subTest(job=job), tempfile.TemporaryDirectory(prefix="bottle selection ") as directory:
                 root = Path(directory)
                 bottles = root/"bottles"
                 bottles.mkdir()
-                for formula in ("custom-xcode-build-service", "xcode-mcpkit"):
+                for formula in ("privateheaderkit", "xcode-mcpkit"):
                     (bottles/f"{formula}--1.2.3.arm64_tahoe.bottle.tar.gz").write_text(formula)
                     (bottles/f"{formula}--1.2.3.arm64_tahoe.bottle.json").write_text("{}")
                 bin_dir = root/"bin"

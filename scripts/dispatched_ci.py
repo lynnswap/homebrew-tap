@@ -8,12 +8,12 @@ import re
 import subprocess
 import sys
 
-from approved_bottles import CandidateError, GitHub, formula_changes, matching_runs
+from approved_bottles import CandidateError, GitHub, formula_changes, matching_runs, needs_bottles
 
 
 def native_branch(branch):
     return branch.startswith("renovate/") or bool(re.fullmatch(
-        r"codex/release-xcode-mcpkit-v[0-9]+\.[0-9]+\.[0-9]+", branch))
+        r"codex/release-(?:xcode-mcpkit|custom-xcode-build-service)-v[0-9]+\.[0-9]+\.[0-9]+", branch))
 
 
 def native_proposal(github, number, head_sha):
@@ -43,11 +43,14 @@ def dispatch(github, dry_run=False, number=None, head_sha=None):
         number = pull["number"]
         head_sha = requested_head if specific else pull["head"]["sha"]
         try:
-            native_proposal(github, number, head_sha)
+            files = native_proposal(github, number, head_sha)
         except CandidateError as error:
             if specific:
                 raise
             values.append(dict(pull_request=number, head_sha=head_sha, status="ineligible", reason=str(error)))
+            continue
+        if not needs_bottles(files):
+            values.append(dict(pull_request=number, head_sha=head_sha, status="upstream-binary-update"))
             continue
         runs = matching_runs(github, workflow["id"], number, head_sha)
         if runs and runs[0]["conclusion"] != "action_required":
