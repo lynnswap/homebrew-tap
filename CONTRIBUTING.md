@@ -74,11 +74,16 @@ bottle publication does not need to run again. The notifier accepts only
 XcodeMCPKit, PrivateHeaderKit, and swift-build, and always targets `main`.
 
 Configure a notification GitHub App with **Actions: read and write**, installed
-only on these three source repositories. In this tap's main-only
-`homebrew-publish` Environment, set variable `SOURCE_DISPATCH_APP_CLIENT_ID` and
-secret `SOURCE_DISPATCH_APP_PRIVATE_KEY`. The existing source-to-tap App keeps its
-separate installation and credentials. Only trusted notification code receives
-the new key; its installation token is revoked when the job ends.
+only on these three source repositories. Create a separate `source-notification`
+Environment with a required maintainer reviewer, `main` as its only deployment
+branch, and administrator bypass disabled. The sole maintainer may approve their
+own run. Store variable `SOURCE_DISPATCH_APP_CLIENT_ID` and secret
+`SOURCE_DISPATCH_APP_PRIVATE_KEY` in this Environment. The notification job cannot
+access the key until its deployment is approved. It checks out trusted code at
+the workflow commit and requests a token for only the selected source repository;
+the token is revoked when the job ends. Keep the private key out of logs and
+artifacts, and remove local provisioning copies after storing the secret.
+The existing source-to-tap App keeps its separate installation and credentials.
 
 Successful source release-run completion also triggers resumption, covering a
 notification received before the original run finishes. Manual dispatch remains
