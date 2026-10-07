@@ -109,7 +109,9 @@ def formula_version(formula):
     else:
         urls = re.findall(r'''^  url (["'])([^"'\n]+)\1(?:\s+#.*)?$''', formula, re.MULTILINE)
         if len(urls) == 1:
-            match = re.search(r"/archive/(?:refs/tags/)?v([0-9]+)\.([0-9]+)\.([0-9]+)\.tar\.gz$", urlsplit(urls[0][1]).path)
+            path = urlsplit(urls[0][1]).path
+            match = (re.search(r"/archive/(?:refs/tags/)?v([0-9]+)\.([0-9]+)\.([0-9]+)\.tar\.gz$", path)
+                     or re.search(r"/releases/download/v([0-9]+)\.([0-9]+)\.([0-9]+)/[^/]+$", path))
             if match:
                 return tuple(map(int, match.groups()))
     raise CandidateError("Cannot determine the published Formula's stable version; declare a literal version before updating.")
