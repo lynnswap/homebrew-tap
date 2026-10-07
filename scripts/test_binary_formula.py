@@ -131,6 +131,28 @@ class BinaryFormulaTests(unittest.TestCase):
                         verify()
                 self.assertEqual(any(command[0:2] == ["brew", "install"] for command in commands), mismatch is None)
 
+    def test_failed_formula_checks_stop_before_installation(self):
+        source = BinarySource()
+        asset = source.release["assets"][0]
+        info = dict(versions=dict(stable="1.2.3"), urls=dict(stable=dict(
+            url=asset["browser_download_url"], checksum=SOURCE_DIGEST)))
+        for failed in ("style", "audit"):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory:
+                commands = []
+                def run(command, **kwargs):
+                    commands.append(command)
+                    if command[:2] == ["brew", failed]:
+                        raise subprocess.CalledProcessError(1, command)
+                    output = json.dumps(dict(formulae=[info])) if command[:3] == ["brew", "info", "--json=v2"] else ""
+                    return subprocess.CompletedProcess(command, 0, stdout=output)
+                with patch.object(binary_formula, "GitHub", return_value=source), \
+                        patch.object(binary_formula.subprocess, "check_output", return_value=SHA), \
+                        patch.object(binary_formula.subprocess, "run", side_effect=run):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        binary_formula.verify(BinaryTap(), 3, SHA, Path(directory))
+                self.assertFalse(any(command[:2] == ["brew", "install"] for command in commands))
+                self.assertEqual(commands[-1][:2], ["brew", failed])
+
 
 if __name__ == "__main__":
     unittest.main()

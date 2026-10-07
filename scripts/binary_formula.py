@@ -42,6 +42,7 @@ def verify(github, number, head, tap_root, *, source_tag=None, source_sha=None):
             or "sha256:" + info["urls"]["stable"]["checksum"] != asset["digest"]):
         raise CandidateError("The Formula must install the published binary URL and checksum.")
     brew("style", formula)
+    brew("audit", "--except=installed", formula)
     brew("install", formula)
     brew("test", formula)
     prefix = Path(brew("--prefix", formula, capture=True).stdout.strip())
