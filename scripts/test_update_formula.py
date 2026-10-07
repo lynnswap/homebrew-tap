@@ -216,6 +216,17 @@ class BinaryUpdateTests(unittest.TestCase):
         with patch.object(update, "urlopen", return_value=io.BytesIO(source.formula.encode())):
             return update.prepared_formula(source, TAG, SHA, SOURCE_DIGEST, source.formula_digest)
 
+    def test_asset_url_versions_support_updates_and_prevent_downgrades(self):
+        source = BinarySource()
+        formula = source.formula.replace('  version "1.2.3"\n', '')
+        self.assertEqual(update.formula_version(formula), (1, 2, 3))
+        tap = Tap(formula.replace('/v1.2.3/', '/v1.2.2/'), source=source.repository)
+        self.assertEqual(update.propose(tap, TAG, SHA, formula, source.repository)["status"], "created-pr")
+        newer = Tap(formula.replace('/v1.2.3/', '/v2.0.0/'), source=source.repository)
+        with self.assertRaisesRegex(CandidateError, "not downgraded"):
+            update.propose(newer, TAG, SHA, formula, source.repository)
+        self.assertEqual(newer.writes, [])
+
     def test_public_binary_recipe_replaces_the_source_recipe_and_bottle(self):
         source = BinarySource()
         self.assertEqual(self.prepared(source), source.formula)
