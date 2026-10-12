@@ -1,8 +1,8 @@
 class Privateheaderkit < Formula
   desc "Generate searchable private headers and symbol lists for Apple platforms"
   homepage "https://github.com/lynnswap/PrivateHeaderKit"
-  url "https://github.com/lynnswap/PrivateHeaderKit/archive/refs/tags/v0.8.1.tar.gz"
-  sha256 "9509e7fe87541c210ad1d1c27bb9746aa072a682048b0acd1bbeff897f7b7f17"
+  url "https://github.com/lynnswap/PrivateHeaderKit/archive/refs/tags/v0.8.2.tar.gz"
+  sha256 "b169e3a11f1b691c26f3db5ee9655624f4ef63d9babc09e9722f91e8f18337cb"
   license "MIT"
 
   bottle do
