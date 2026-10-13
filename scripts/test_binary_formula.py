@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from approved_bottles import CandidateError
+from approved_bottles import CandidateError, formula_proposal
 import binary_formula
 import dispatched_ci
 from test_dispatched_ci import FakeNative, SHA
@@ -94,6 +94,43 @@ class BinaryFormulaTests(unittest.TestCase):
                 installs = [command for command in commands if command[0:2] == ["brew", "install"]]
                 self.assertEqual(bool(installs), corruption != "checksum")
                 self.assertFalse(any("bottle" in command for command in commands))
+
+    def test_merged_pull_request_can_verify_the_same_head_and_public_binary(self):
+        tap = BinaryTap()
+        tap.pull.update(merged=True, state="closed")
+        source = BinarySource()
+        asset = source.release["assets"][0]
+        metadata = dict(versions=dict(stable="1.2.3"), urls=dict(stable=dict(
+            url=asset["browser_download_url"], checksum=SOURCE_DIGEST)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "libexec").mkdir()
+            (root / "libexec/manifest.json").write_text(json.dumps(dict(
+                version=TAG, sourceRevision=SHA)))
+            commands = []
+            def run(command, **kwargs):
+                commands.append(command)
+                output = ""
+                if command[:3] == ["brew", "info", "--json=v2"]:
+                    output = json.dumps(dict(formulae=[metadata]))
+                elif command[:2] == ["brew", "--prefix"]:
+                    output = str(root)
+                return subprocess.CompletedProcess(command, 0, stdout=output)
+            with patch.object(binary_formula, "GitHub", return_value=source), \
+                    patch.object(binary_formula.subprocess, "check_output", return_value=SHA), \
+                    patch.object(binary_formula.subprocess, "run", side_effect=run):
+                binary_formula.verify(tap, 3, SHA, root, source_tag=TAG, source_sha=SHA)
+            self.assertTrue(any(command[:2] == ["brew", "install"] for command in commands))
+            self.assertTrue(any(command[:2] == ["brew", "test"] for command in commands))
+            self.assertEqual(tap.writes, [])
+
+    def test_merged_pull_requests_remain_ineligible_for_publication(self):
+        tap = BinaryTap()
+        tap.pull.update(merged=True, state="closed")
+        for proposal in (formula_proposal, dispatched_ci.native_proposal):
+            with self.subTest(proposal=proposal.__name__), self.assertRaises(CandidateError):
+                proposal(tap, 3, SHA)
+        self.assertEqual(tap.writes, [])
 
     def test_release_dispatched_installation_keeps_the_requested_tag_and_commit(self):
         for mismatch in (None, "tag", "commit"):

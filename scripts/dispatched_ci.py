@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-from approved_bottles import CandidateError, GitHub, formula_changes, matching_runs, needs_bottles
+from approved_bottles import CandidateError, GitHub, formula_changes, formula_revision, matching_runs, needs_bottles
 
 
 def native_branch(branch):
@@ -16,19 +16,17 @@ def native_branch(branch):
         r"codex/release-(?:xcode-mcpkit|custom-xcode-build-service)-v[0-9]+\.[0-9]+\.[0-9]+", branch))
 
 
+def native_revision(github, number, head_sha, pull):
+    if pull["user"]["login"] != "github-actions[bot]" or not native_branch(pull["head"]["ref"]):
+        raise CandidateError("Automatic CI accepts native Formula proposals from GitHub Actions only.")
+    return formula_revision(github, number, head_sha, pull)
+
+
 def native_proposal(github, number, head_sha):
     pull = github.api(f"pulls/{number}")
-    if (pull["state"] != "open" or pull.get("draft") or pull["base"]["ref"] != "main"
-            or pull["user"]["login"] != "github-actions[bot]"
-            or not native_branch(pull["head"]["ref"])
-            or pull["head"]["repo"] is None or pull["head"]["repo"]["full_name"] != github.repository):
+    if pull["state"] != "open" or pull.get("draft"):
         raise CandidateError("Automatic CI accepts an open native same-repository Formula proposal only.")
-    if not re.fullmatch(r"[0-9a-f]{40}", head_sha) or pull["head"]["sha"] != head_sha:
-        raise CandidateError("The proposed head changed; inspect its current revision.")
-    files = github.pages(f"pulls/{number}/files")
-    if not formula_changes(files):
-        raise CandidateError("Automatic CI accepts only added or modified Formula files.")
-    return files
+    return native_revision(github, number, head_sha, pull)
 
 
 def dispatch(github, dry_run=False, number=None, head_sha=None):
@@ -116,7 +114,8 @@ def publish(github, number, head_sha, ci_run, dry_run):
 
 
 def prepare(github, number, head_sha, tap_root):
-    files = native_proposal(github, number, head_sha)
+    pull = github.api(f"pulls/{number}")
+    files = native_revision(github, number, head_sha, pull)
     subprocess.run(["git", "-C", str(tap_root), "fetch", "origin", f"refs/pull/{number}/head"], check=True)
     fetched = subprocess.check_output(["git", "-C", str(tap_root), "rev-parse", "FETCH_HEAD"], text=True).strip()
     if fetched != head_sha:
