@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from approved_bottles import CandidateError, GitHub, formula_proposal
+from approved_bottles import CandidateError, GitHub, formula_revision
 from dispatched_ci import native_proposal
 from update_formula import BINARY_ARCHIVE, BINARY_FORMULA, BINARY_SOURCE, published_binary
 
@@ -19,7 +19,9 @@ def require_binary_only(files):
 
 
 def verify(github, number, head, tap_root, *, source_tag=None, source_sha=None):
-    require_binary_only(formula_proposal(github, number, head))
+    pull = github.api(f"pulls/{number}")
+    files = formula_revision(github, number, head, pull)
+    require_binary_only(files)
     subprocess.run(["git", "-C", str(tap_root), "fetch", "origin", f"refs/pull/{number}/head"], check=True)
     actual = subprocess.check_output(["git", "-C", str(tap_root), "rev-parse", "FETCH_HEAD"], text=True).strip()
     if actual != head:

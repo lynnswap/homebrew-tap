@@ -106,12 +106,9 @@ def matching_runs(github, workflow_id, number, head_sha):
     return sorted(runs.values(), key=lambda run: (run["created_at"], run["id"]), reverse=True)
 
 
-def formula_proposal(github, number, head_sha):
+def formula_revision(github, number, head_sha, pull):
     if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
         raise CandidateError("Supply the reviewed full lowercase PR-head SHA.")
-    pull = github.api(f"pulls/{number}")
-    if pull["state"] != "open" or pull.get("draft"):
-        raise CandidateError("Select an open, ready Formula pull request.")
     if (pull["user"]["login"] not in ("lynnswap", "github-actions[bot]")
             or pull["head"].get("repo") is None
             or pull["head"]["repo"]["full_name"] != github.repository):
@@ -125,6 +122,13 @@ def formula_proposal(github, number, head_sha):
         raise CandidateError("Bottle publication accepts only added or modified Formula files.")
 
     return files
+
+
+def formula_proposal(github, number, head_sha):
+    pull = github.api(f"pulls/{number}")
+    if pull["state"] != "open" or pull.get("draft"):
+        raise CandidateError("Select an open, ready Formula pull request.")
+    return formula_revision(github, number, head_sha, pull)
 
 
 def needs_bottles(files):

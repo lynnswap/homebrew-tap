@@ -97,6 +97,14 @@ class DispatchedCITests(unittest.TestCase):
                 ci.native_proposal(github, 3, SHA)
             self.assertEqual(github.writes, [])
 
+    def test_merged_pr_can_prepare_the_same_head_for_read_only_ci(self):
+        github = FakeNative()
+        github.pull.update(state="closed", merged=True)
+        with patch.object(ci.subprocess, "run"), patch.object(ci.subprocess, "check_output", return_value=SHA):
+            self.assertEqual(ci.prepare(github, 3, SHA, Path("/tap")), dict(
+                formulae=["lynnswap/tap/privateheaderkit"], added_formulae=[]))
+        self.assertEqual(github.writes, [])
+
     def test_fetched_sha_is_checked_before_checkout(self):
         github = FakeNative()
         with patch.object(ci.subprocess, "run") as run, patch.object(ci.subprocess, "check_output", return_value="b" * 40):
