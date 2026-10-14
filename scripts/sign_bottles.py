@@ -229,6 +229,7 @@ def payload_code(prefix):
     payload = prefix / 'libexec'
     app = payload / 'XcodeMCPNativeHost.app'
     host = app / 'Contents/MacOS/xcode-mcp-native-host'
+    renderer = app / 'Contents/Resources/PreviewRenderer/iphonesimulator-arm64'
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     if info.get('CFBundleIdentifier') != 'com.apple.dt.mcp-server' or info.get('CFBundleExecutable') != host.name:
         raise ReleaseError('Bottle does not contain the native host bundle contract.')
@@ -246,8 +247,8 @@ def payload_code(prefix):
         if not macho:
             continue
         library = path.suffix == '.dylib' and path.parent in (
-            payload / 'xcode-mcp-runtime', app / 'Contents/Frameworks')
-        if path not in required and not library:
+            payload / 'xcode-mcp-runtime', app / 'Contents/Frameworks', renderer / 'Frameworks')
+        if path not in required and path != renderer / 'XcodeMCPPreviewRenderer' and not library:
             raise ReleaseError('Bottle contains code outside the supported CLI, helper, and Swift library layout.')
         code.append(path)
     if not required <= set(code):

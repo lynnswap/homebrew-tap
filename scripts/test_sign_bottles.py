@@ -177,6 +177,45 @@ class BottleSigningTests(unittest.TestCase):
         with self.assertRaisesRegex(signer.ReleaseError, 'outside the supported'):
             signer.payload_code(self.prefix)
 
+    def test_preview_renderer_and_libraries_receive_distribution_signatures(self):
+        renderer = self.app / 'Contents/Resources/PreviewRenderer/iphonesimulator-arm64'
+        executable = renderer / 'XcodeMCPPreviewRenderer'
+        library = renderer / 'Frameworks/libswift_Concurrency.dylib'
+        library.parent.mkdir(parents=True)
+        for path in (executable, library):
+            path.write_bytes(bytes.fromhex('cffaedfe'))
+        self.pack()
+        commands = SigningCommandStub(self)
+        with patch.dict(os.environ, SECRET_FIXTURES), patch.object(signer.subprocess, 'run', side_effect=commands):
+            with contextlib.redirect_stdout(io.StringIO()):
+                signer.sign_bottle(self.source, self.root / 'signed', CONFIGURATION)
+        signing = [call for call in commands.calls if call[:2] == ['/usr/bin/codesign', '--force']]
+        notarization = next(index for index, call in enumerate(commands.calls)
+                            if call[:3] == ['/usr/bin/xcrun', 'notarytool', 'submit'])
+        for path in (executable, library):
+            call = next(call for call in signing if call[-1].endswith(str(path.relative_to(self.prefix))))
+            self.assertEqual(call[call.index('--sign') + 1], 'A' * 40)
+            self.assertIn('--timestamp', call)
+            self.assertEqual(call[call.index('--options') + 1], 'runtime')
+            self.assertLess(signing.index(call), len(signing) - 1)
+            verification = next(index for index, call in enumerate(commands.calls)
+                                if call[:2] == ['/usr/bin/codesign', '--verify']
+                                and call[-1].endswith(str(path.relative_to(self.prefix))))
+            self.assertLess(verification, notarization)
+        self.assertTrue(signing[-1][-1].endswith('XcodeMCPNativeHost.app'))
+
+    def test_preview_renderer_layout_does_not_accept_other_code(self):
+        renderer = self.app / 'Contents/Resources/PreviewRenderer/iphonesimulator-arm64'
+        for path in (renderer / 'unexpected-tool', renderer / 'Frameworks/nested/libswift_Concurrency.dylib'):
+            with self.subTest(path=path.relative_to(self.app)):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(bytes.fromhex('cffaedfe'))
+                try:
+                    with self.assertRaisesRegex(signer.ReleaseError, 'outside the supported'):
+                        signer.payload_code(self.prefix)
+                finally:
+                    path.unlink()
+
     def test_native_tools_remove_secrets_from_child_environment_and_errors(self):
         tools = signer.NativeTools()
         tools.redactions = ['password value']
