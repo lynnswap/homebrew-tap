@@ -229,7 +229,13 @@ def payload_code(prefix):
     payload = prefix / 'libexec'
     app = payload / 'XcodeMCPNativeHost.app'
     host = app / 'Contents/MacOS/xcode-mcp-native-host'
-    renderer = app / 'Contents/Resources/PreviewRenderer/iphonesimulator-arm64'
+    renderers = {app / 'Contents/Resources/PreviewRenderer' / layout for layout in (
+        'iphonesimulator-arm64', 'appletvsimulator-arm64', 'xrsimulator-arm64',
+        'watchsimulator-arm64', 'macosx-arm64', 'maccatalyst-arm64',
+    )}
+    renderer_executables = {renderer / 'XcodeMCPPreviewRenderer' for renderer in renderers}
+    library_directories = {payload / 'xcode-mcp-runtime', app / 'Contents/Frameworks'}
+    library_directories.update(renderer / 'Frameworks' for renderer in renderers)
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     if info.get('CFBundleIdentifier') != 'com.apple.dt.mcp-server' or info.get('CFBundleExecutable') != host.name:
         raise ReleaseError('Bottle does not contain the native host bundle contract.')
@@ -246,9 +252,8 @@ def payload_code(prefix):
             macho = stream.read(4) in MACHO_MAGICS
         if not macho:
             continue
-        library = path.suffix == '.dylib' and path.parent in (
-            payload / 'xcode-mcp-runtime', app / 'Contents/Frameworks', renderer / 'Frameworks')
-        if path not in required and path != renderer / 'XcodeMCPPreviewRenderer' and not library:
+        library = path.suffix == '.dylib' and path.parent in library_directories
+        if path not in required and path not in renderer_executables and not library:
             raise ReleaseError('Bottle contains code outside the supported CLI, helper, and Swift library layout.')
         code.append(path)
     if not required <= set(code):
