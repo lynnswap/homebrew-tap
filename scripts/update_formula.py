@@ -153,7 +153,8 @@ def propose(github, tag, source_sha, formula, source_repository=SOURCE):
             if comparison["status"] != "ahead":
                 raise CandidateError("The release branch contains a different Formula; inspect it before retrying.")
     if existing is None or existing["text"] != formula:
-        data = dict(message=f"feat: release {tool} {tag}", branch=branch,
+        # The updater runs verification explicitly; PR-event CI would wait for approval.
+        data = dict(message=f"feat: release {tool} {tag}\n\n[skip ci]", branch=branch,
                     content=base64.b64encode(formula.encode()).decode())
         if existing:
             data["sha"] = existing["sha"]

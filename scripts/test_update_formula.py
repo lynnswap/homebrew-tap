@@ -136,6 +136,8 @@ class UpdateFormulaTests(unittest.TestCase):
         result = update.propose(github, TAG, SHA, FORMULA)
         self.assertEqual(result, dict(status="created-pr", pull_request=7, head_sha=SHA))
         self.assertEqual(github.proposed, FORMULA)
+        commit = next(data for path, method, data in github.writes if method == "PUT")
+        self.assertIn("[skip ci]", commit["message"])
         writes = len(github.writes)
         self.assertEqual(update.propose(github, TAG, SHA, FORMULA)["status"], "existing-pr")
         self.assertEqual(len(github.writes), writes)
