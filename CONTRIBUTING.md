@@ -135,6 +135,13 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 
 ## Automated maintenance
 
+Automated Formula commits from the approved updater and Renovate include
+`[skip ci]` to suppress duplicate `pull_request` workflow runs. GitHub otherwise
+holds these `GITHUB_TOKEN`-created runs for approval, then reports them as failed
+if the PR merges before approval. Verification still runs through the updater's
+reusable binary workflow or the explicit native bottle `workflow_dispatch`,
+which are unaffected by the commit marker. Maintainer PRs keep their normal CI.
+
 ### Approved XcodeMCPKit releases
 
 XcodeMCPKit dispatches `update-formula.yml` from its approved `release-publish`
