@@ -5,6 +5,11 @@ class XcodeMcpkit < Formula
   sha256 "6168ec74a8220d7de5db0f244511df14e31f9938d316024bbc11ae7bafb1fa3d"
   license "MIT"
 
+  bottle do
+    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/xcode-mcpkit-0.23.1"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "19ca99ce80f76e406c5e046c04248e3a6dcc311406457ef60a35be45c88934d9"
+  end
+
   depends_on "python@3.14" => [:build, :test]
   depends_on xcode: ["27.0", :build, :test]
   depends_on arch: :arm64
