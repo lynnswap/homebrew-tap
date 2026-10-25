@@ -88,6 +88,26 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(list(self.bin.iterdir()), [])
 
+    def test_current_bottle_migrates_available_entry_points_without_a_legacy_link(self):
+        self.old_xcode()
+        (self.opt / 'bin/xcode-mcp-proxy').unlink()
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.bin / 'xcode-mcp-proxy').read_text(), 'xcode-mcp-proxy')
+        self.assertFalse((self.bin / 'xcode-mcp-proxy').is_symlink())
+        for name in ('xcode-mcp-proxy-server', 'XcodeMCPNativeHost.app'):
+            self.assertTrue((self.bin / name).is_symlink())
+        self.assertNotIn('xcode-mcp-proxy --version', self.log.read_text())
+
+    def test_missing_required_proxy_server_preserves_standalone_entry_points(self):
+        self.old_xcode()
+        (self.opt / 'bin/xcode-mcp-proxy-server').unlink()
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('verification failed', result.stderr)
+        self.assertFalse((self.bin / 'xcode-mcp-proxy').is_symlink())
+        self.assertFalse(list(self.bin.glob('.*backup.*')))
+
     def test_failed_new_cli_leaves_old_installation(self):
         self.old_xcode()
         self.env["CLI_STATUS"] = "9"

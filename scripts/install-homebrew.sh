@@ -138,11 +138,16 @@ then
 fi
 case "${formula}" in
   xcode-mcpkit)
-    verify_command "${opt}/bin/xcode-mcp-proxy" --version
     verify_command "${opt}/bin/xcode-mcp-proxy-server" --version
     [[ -d "${opt}/libexec/XcodeMCPNativeHost.app" ]] || fail 'Homebrew native host is missing. Standalone entry points are unchanged.'
-    names=(xcode-mcp-proxy xcode-mcp-proxy-server XcodeMCPNativeHost.app)
-    targets=("${opt}/bin/xcode-mcp-proxy" "${opt}/bin/xcode-mcp-proxy-server" "${opt}/libexec/XcodeMCPNativeHost.app")
+    names=(xcode-mcp-proxy-server XcodeMCPNativeHost.app)
+    targets=("${opt}/bin/xcode-mcp-proxy-server" "${opt}/libexec/XcodeMCPNativeHost.app")
+    if [[ -e "${opt}/bin/xcode-mcp-proxy" ]]
+    then
+      verify_command "${opt}/bin/xcode-mcp-proxy" --version
+      names=(xcode-mcp-proxy "${names[@]}")
+      targets=("${opt}/bin/xcode-mcp-proxy" "${targets[@]}")
+    fi
     ;;
   privateheaderkit)
     verify_command "${opt}/bin/privateheaderkit" --tool-version
