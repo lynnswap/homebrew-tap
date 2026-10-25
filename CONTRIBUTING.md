@@ -159,8 +159,8 @@ Its Formula checks the installed CLI versions, options, and native signature.
 A separate read-only job installs the built bottle and exercises direct and
 proxy MCP sessions against a disposable project outside Homebrew's test sandbox.
 After that job succeeds, review the exact artifact ID and SHA-256 digest in the
-publication summary and approve `release-signing`. The signing job signs both
-commands, nested Swift libraries, and the helper, submits the payload to Apple,
+publication summary and approve `release-signing`. The signing job signs command
+binaries, nested Swift libraries, and the helper, submits the payload to Apple,
 and staples the accepted ticket to the app. The helper keeps signing identifier
 `com.lynnswap.XcodeMCPNativeHost` so Xcode recognizes it across upgrades.
 
