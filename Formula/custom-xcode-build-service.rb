@@ -1,8 +1,8 @@
 class CustomXcodeBuildService < Formula
   desc "Select a custom Swift Build service for Xcode"
   homepage "https://github.com/lynnswap/swift-build"
-  url "https://github.com/lynnswap/swift-build/releases/download/v0.5.5/custom-xcode-build-service-darwin-arm64.tar.gz"
-  sha256 "3751887de81e189b641c1fc5e12d3c5355e1ff25e28213cef9a78394734dee35"
+  url "https://github.com/lynnswap/swift-build/releases/download/v0.5.6/custom-xcode-build-service-darwin-arm64.tar.gz"
+  sha256 "3ca7c4034e4cc7c3edacd3ba0acfc17d70945e6de19d9c0076d354441c5a9f33"
   license "Apache-2.0" => { with: "Swift-exception" }
 
   depends_on arch: :arm64
