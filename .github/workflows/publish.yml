@@ -97,7 +97,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Revalidate the tested publication candidate
@@ -117,7 +117,7 @@ jobs:
           python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
             --pr "$PULL_REQUEST" --head "$HEAD_SHA" --candidate-digest "$CANDIDATE_DIGEST" "$@"
       - name: Download the approved unsigned artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.validate.outputs.artifact_id }}
           run-id: ${{ needs.validate.outputs.ci_run_id }}
@@ -139,7 +139,7 @@ jobs:
             --output "$RUNNER_TEMP/signed-bottles"
       - name: Upload the signed bottle artifact
         id: signed
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed_bottles_${{ github.run_id }}_${{ github.run_attempt }}
           path: ${{ runner.temp }}/signed-bottles/*.bottle.*
@@ -171,13 +171,13 @@ jobs:
           persist-credentials: false
       - name: Preserve the trusted signature verifier
         run: cp scripts/sign_bottles.py "$RUNNER_TEMP/verify-signature.py"
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
-      - uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+      - uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878 # 2026.10.19.1
         with:
           token: ${{ github.token }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.sign-xcodemcpkit.outputs.artifact_id }}
           path: ${{ runner.temp }}/bottles
@@ -250,7 +250,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Download the approved tested artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.sign-xcodemcpkit.outputs.artifact_id || needs.validate.outputs.artifact_id }}
           run-id: ${{ needs.sign-xcodemcpkit.outputs.artifact_id && github.run_id || needs.validate.outputs.ci_run_id }}
@@ -274,12 +274,12 @@ jobs:
           python3 scripts/approved_bottles.py --repo "$GITHUB_REPOSITORY" \
             --pr "$PULL_REQUEST" --head "$HEAD_SHA" --candidate-digest "$CANDIDATE_DIGEST" "$@"
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+        uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878 # 2026.10.19.1
         with:
           token: ${{ github.token }}
       - name: Set up git
         id: git_setup
-        uses: Homebrew/actions/git-user-config@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+        uses: Homebrew/actions/git-user-config@4790763c0a3ba4036f72634dc079c4a7dfcd4878 # 2026.10.19.1
       - name: Publish the approved local bottles
         id: publish_bottles
         env:
