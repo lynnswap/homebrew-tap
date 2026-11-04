@@ -1,14 +1,9 @@
 class XcodeMcpkit < Formula
   desc "Use Xcode build, test, preview, and editing tools through MCP"
   homepage "https://github.com/lynnswap/XcodeMCPKit"
-  url "https://github.com/lynnswap/XcodeMCPKit/archive/refs/tags/v0.27.2.tar.gz"
-  sha256 "554510e7030f8a7f2e58c14831a594edbe9a6833784a469a49982d4b4095d6ab"
+  url "https://github.com/lynnswap/XcodeMCPKit/archive/refs/tags/v0.27.3.tar.gz"
+  sha256 "ba04b8be9ba84700078e711f09d3dc71605017645d5e890689b66143cde15188"
   license "MIT"
-
-  bottle do
-    root_url "https://github.com/lynnswap/homebrew-tap/releases/download/xcode-mcpkit-0.27.2"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe: "af4c6193f29bfa46ca7c2fba698bd5d4a85eead7488735857631ef9a18e01fc9"
-  end
 
   depends_on "python@3.14" => [:build, :test]
   depends_on xcode: ["27.0", :build, :test]
