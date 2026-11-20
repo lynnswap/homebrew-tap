@@ -35,10 +35,13 @@ class InstallerTests(unittest.TestCase):
         self.script("brew", 'echo "$*" >> "$CALL_LOG"\ncase "$*" in --prefix) echo "$BREW_ROOT";; --prefix\\ *) echo "$FORMULA_OPT";; esac')
         self.script("codesign", 'echo "Identifier=$(cat "$2/identity" 2>/dev/null || cat "$2")" >&2')
         for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server", "privateheaderkit", "custom-xcode-build-service"):
-            target = self.opt / "bin" / name
-            version_check = '[ "$1" = --tool-version ] || exit 64\n' if name == "privateheaderkit" else ""
-            target.write_text('#!/bin/sh\n' + version_check + 'echo "' + name + ' $*" >> "$CALL_LOG"\nexit "${CLI_STATUS:-0}"\n')
-            target.chmod(0o755)
+            self.cli(name)
+
+    def cli(self, name):
+        target = self.opt / "bin" / name
+        version_check = '[ "$1" = --tool-version ] || exit 64\n' if name == "privateheaderkit" else ""
+        target.write_text('#!/bin/sh\n' + version_check + 'echo "' + name + ' $*" >> "$CALL_LOG"\nexit "${CLI_STATUS:-0}"\n')
+        target.chmod(0o755)
 
     def script(self, name, body):
         path = self.tools / name
@@ -98,6 +101,24 @@ class InstallerTests(unittest.TestCase):
         for name in ('xcode-mcp-proxy-server', 'XcodeMCPNativeHost.app'):
             self.assertTrue((self.bin / name).is_symlink())
         self.assertNotIn('xcode-mcp-proxy --version', self.log.read_text())
+
+    def test_renamed_server_bottle_migrates_only_entry_points_it_ships(self):
+        self.old_xcode()
+        (self.bin / "xcode-mcp-server").write_text("xcode-mcp-server")
+        for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server"):
+            (self.opt / "bin" / name).unlink()
+        self.cli("xcode-mcp-server")
+        result = self.run_installer(args=("--dry-run",))
+        self.assertIn(str(self.bin / "xcode-mcp-server"), result.stdout)
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ("xcode-mcp-server", "XcodeMCPNativeHost.app"):
+            self.assertTrue((self.bin / name).is_symlink())
+        self.assertEqual((self.bin / "xcode-mcp-server").resolve(), (self.opt / "bin/xcode-mcp-server").resolve())
+        for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server"):
+            self.assertEqual((self.bin / name).read_text(), name)
+            self.assertFalse((self.bin / name).is_symlink())
+        self.assertIn("xcode-mcp-server --version", self.log.read_text())
 
     def test_missing_required_proxy_server_preserves_standalone_entry_points(self):
         self.old_xcode()

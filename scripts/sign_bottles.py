@@ -239,9 +239,10 @@ def payload_code(prefix):
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     if info.get('CFBundleIdentifier') != 'com.apple.dt.mcp-server' or info.get('CFBundleExecutable') != host.name:
         raise ReleaseError('Bottle does not contain the native host bundle contract.')
-    required = {host, payload / 'xcode-mcp-proxy-server'}
+    # Bottles through v0.27.x name the server xcode-mcp-proxy-server.
+    servers = {payload / 'xcode-mcp-server', payload / 'xcode-mcp-proxy-server'}
     # Existing v0.22.0 bottles also contain the direct proxy command.
-    allowed_executables = required | {payload / 'xcode-mcp-proxy'}
+    allowed_executables = {host, payload / 'xcode-mcp-proxy'} | servers
     code = []
     for path in prefix.rglob('*'):
         if path.is_symlink():
@@ -258,7 +259,7 @@ def payload_code(prefix):
         if path not in allowed_executables and path not in renderer_executables and not library:
             raise ReleaseError('Bottle contains code outside the supported CLI, helper, and Swift library layout.')
         code.append(path)
-    if not required <= set(code):
+    if host not in code or not servers & set(code):
         raise ReleaseError('Bottle is missing a required native executable.')
     return app, host, code
 

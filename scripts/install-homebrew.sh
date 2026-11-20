@@ -94,7 +94,7 @@ then
     echo "Would ask the installed CLI to migrate its owned standalone selection and command link in ${HOME}."
   else
     echo "Would inspect: ${bindir}"
-    for name in privateheaderkit xcode-mcp-proxy xcode-mcp-proxy-server XcodeMCPNativeHost.app
+    for name in privateheaderkit xcode-mcp-proxy xcode-mcp-proxy-server xcode-mcp-server XcodeMCPNativeHost.app
     do
       case "${formula}:${name}" in privateheaderkit:privateheaderkit | xcode-mcpkit:xcode-* | xcode-mcpkit:XcodeMCPNativeHost.app)
         if [[ -e "${bindir}/${name}" || -L "${bindir}/${name}" ]]; then echo "  Existing entry: ${bindir}/${name}"; fi
@@ -138,10 +138,13 @@ then
 fi
 case "${formula}" in
   xcode-mcpkit)
-    verify_command "${opt}/bin/xcode-mcp-proxy-server" --version
+    server=xcode-mcp-server
+    # Formulae through v0.27.x install the server as xcode-mcp-proxy-server.
+    if [[ ! -e "${opt}/bin/${server}" ]] && [[ -e "${opt}/bin/xcode-mcp-proxy-server" ]]; then server=xcode-mcp-proxy-server; fi
+    verify_command "${opt}/bin/${server}" --version
     [[ -d "${opt}/libexec/XcodeMCPNativeHost.app" ]] || fail 'Homebrew native host is missing. Standalone entry points are unchanged.'
-    names=(xcode-mcp-proxy-server XcodeMCPNativeHost.app)
-    targets=("${opt}/bin/xcode-mcp-proxy-server" "${opt}/libexec/XcodeMCPNativeHost.app")
+    names=("${server}" XcodeMCPNativeHost.app)
+    targets=("${opt}/bin/${server}" "${opt}/libexec/XcodeMCPNativeHost.app")
     if [[ -e "${opt}/bin/xcode-mcp-proxy" ]]
     then
       verify_command "${opt}/bin/xcode-mcp-proxy" --version
