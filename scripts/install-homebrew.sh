@@ -151,6 +151,13 @@ case "${formula}" in
       names=(xcode-mcp-proxy "${names[@]}")
       targets=("${opt}/bin/xcode-mcp-proxy" "${targets[@]}")
     fi
+    if [[ "${server}" = xcode-mcp-server ]]
+    then
+      # A standalone server from before the rename would keep running beside the
+      # migrated native host. An empty target retires it without a link.
+      names+=(xcode-mcp-proxy-server)
+      targets+=('')
+    fi
     ;;
   privateheaderkit)
     verify_command "${opt}/bin/privateheaderkit" --tool-version
@@ -174,6 +181,8 @@ do
   path=${bindir}/${names[i]}
   target=${targets[i]}
   [[ -e "${path}" || -L "${path}" ]] || continue
+  # Earlier migrations left links at retired names; only standalone executables are retired.
+  if [[ -z "${target}" ]] && [[ -L "${path}" ]]; then continue; fi
   if [[ "${path}" -ef "${target}" ]]; then continue; fi
   owned=false
   if [[ "${formula}" = privateheaderkit ]] && [[ -L "${path}" ]]
@@ -215,6 +224,7 @@ lock=${bindir}/.lynnswap-homebrew-migration.lock
 mkdir "${lock}" || fail "Cannot acquire migration lock: ${lock}. Check for another installer before removing a stale lock."
 backup=
 moved=0
+retired=()
 complete=false
 finish() {
   status=$?
@@ -264,7 +274,10 @@ do
   path=${paths[i]}
   moved=$((moved + 1))
   mv "${path}" "${backup}/${path##*/}"
-  if [[ "${bindir}" != "${brew_root}/bin" ]] || [[ "${path##*/}" = XcodeMCPNativeHost.app ]]
+  if [[ -z "${links[i]}" ]]
+  then
+    retired+=("${path##*/}")
+  elif [[ "${bindir}" != "${brew_root}/bin" ]] || [[ "${path##*/}" = XcodeMCPNativeHost.app ]]
   then
     ln -s "${links[i]}" "${path}"
   fi
@@ -273,9 +286,14 @@ brew link "lynnswap/tap/${formula}"
 # Homebrew can already consider a keg linked after an interrupted migration.
 for ((i = 0; i < ${#paths[@]}; i++))
 do
-  if [[ ! -e "${paths[i]}" && ! -L "${paths[i]}" ]]; then ln -s "${links[i]}" "${paths[i]}"; fi
+  if [[ -n "${links[i]}" ]] && [[ ! -e "${paths[i]}" && ! -L "${paths[i]}" ]]; then ln -s "${links[i]}" "${paths[i]}"; fi
 done
 complete=true
 echo "Installed ${formula} with Homebrew. Existing command paths now follow Homebrew upgrades."
 echo "Standalone entry points were saved in: ${backup}"
+# Bash 3.2 treats an empty array expansion as unset under set -u.
+for ((i = 0; i < ${#retired[@]}; i++))
+do
+  echo "${bindir}/${retired[i]} was renamed; start the server with xcode-mcp-server."
+done
 echo 'Legacy payloads and generated data were retained. Restart running tools to use the new installation.'

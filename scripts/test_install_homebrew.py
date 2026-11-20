@@ -102,12 +102,15 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((self.bin / name).is_symlink())
         self.assertNotIn('xcode-mcp-proxy --version', self.log.read_text())
 
-    def test_renamed_server_bottle_migrates_only_entry_points_it_ships(self):
-        self.old_xcode()
-        (self.bin / "xcode-mcp-server").write_text("xcode-mcp-server")
+    def renamed_server_bottle(self):
         for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server"):
             (self.opt / "bin" / name).unlink()
         self.cli("xcode-mcp-server")
+
+    def test_renamed_server_bottle_retires_the_standalone_server_it_replaces(self):
+        self.old_xcode()
+        (self.bin / "xcode-mcp-server").write_text("xcode-mcp-server")
+        self.renamed_server_bottle()
         result = self.run_installer(args=("--dry-run",))
         self.assertIn(str(self.bin / "xcode-mcp-server"), result.stdout)
         result = self.run_installer()
@@ -115,10 +118,20 @@ class InstallerTests(unittest.TestCase):
         for name in ("xcode-mcp-server", "XcodeMCPNativeHost.app"):
             self.assertTrue((self.bin / name).is_symlink())
         self.assertEqual((self.bin / "xcode-mcp-server").resolve(), (self.opt / "bin/xcode-mcp-server").resolve())
-        for name in ("xcode-mcp-proxy", "xcode-mcp-proxy-server"):
-            self.assertEqual((self.bin / name).read_text(), name)
-            self.assertFalse((self.bin / name).is_symlink())
+        self.assertFalse(os.path.lexists(self.bin / "xcode-mcp-proxy-server"))
+        backup = next(self.bin.glob(".*backup.*"))
+        self.assertEqual((backup / "xcode-mcp-proxy-server").read_text(), "xcode-mcp-proxy-server")
+        self.assertIn("start the server with xcode-mcp-server", result.stdout)
+        self.assertEqual((self.bin / "xcode-mcp-proxy").read_text(), "xcode-mcp-proxy")
+        self.assertFalse((self.bin / "xcode-mcp-proxy").is_symlink())
         self.assertIn("xcode-mcp-server --version", self.log.read_text())
+
+    def test_renamed_server_bottle_leaves_an_earlier_migration_link(self):
+        (self.bin / "xcode-mcp-proxy-server").symlink_to(self.opt / "bin/xcode-mcp-proxy-server")
+        self.renamed_server_bottle()
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(os.readlink(self.bin / "xcode-mcp-proxy-server"), str(self.opt / "bin/xcode-mcp-proxy-server"))
 
     def test_missing_required_proxy_server_preserves_standalone_entry_points(self):
         self.old_xcode()
