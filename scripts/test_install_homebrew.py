@@ -121,17 +121,27 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(self.bin / "xcode-mcp-proxy-server"))
         backup = next(self.bin.glob(".*backup.*"))
         self.assertEqual((backup / "xcode-mcp-proxy-server").read_text(), "xcode-mcp-proxy-server")
-        self.assertIn("start the server with xcode-mcp-server", result.stdout)
+        self.assertIn(f"start the server with {self.opt}/bin/xcode-mcp-server", result.stdout)
         self.assertEqual((self.bin / "xcode-mcp-proxy").read_text(), "xcode-mcp-proxy")
         self.assertFalse((self.bin / "xcode-mcp-proxy").is_symlink())
         self.assertIn("xcode-mcp-server --version", self.log.read_text())
 
-    def test_renamed_server_bottle_leaves_an_earlier_migration_link(self):
-        (self.bin / "xcode-mcp-proxy-server").symlink_to(self.opt / "bin/xcode-mcp-proxy-server")
+    def test_renamed_server_bottle_leaves_unrecognized_entries_at_the_old_name(self):
         self.renamed_server_bottle()
-        result = self.run_installer()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(os.readlink(self.bin / "xcode-mcp-proxy-server"), str(self.opt / "bin/xcode-mcp-proxy-server"))
+        app = self.bin / "XcodeMCPNativeHost.app"
+        app.mkdir()
+        (app / "identity").write_text("com.lynnswap.XcodeMCPNativeHost")
+        entry = self.bin / "xcode-mcp-proxy-server"
+        for kind, create in (("earlier migration link", lambda: entry.symlink_to(self.opt / "bin/xcode-mcp-proxy-server")),
+                             ("unrelated wrapper", lambda: entry.write_text("unrelated wrapper"))):
+            with self.subTest(kind=kind):
+                if os.path.lexists(entry):
+                    entry.unlink()
+                create()
+                result = self.run_installer()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(os.path.lexists(entry))
+                self.assertTrue(app.is_symlink())
 
     def test_missing_required_proxy_server_preserves_standalone_entry_points(self):
         self.old_xcode()

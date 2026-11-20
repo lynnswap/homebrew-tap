@@ -181,8 +181,6 @@ do
   path=${bindir}/${names[i]}
   target=${targets[i]}
   [[ -e "${path}" || -L "${path}" ]] || continue
-  # Earlier migrations left links at retired names; only standalone executables are retired.
-  if [[ -z "${target}" ]] && [[ -L "${path}" ]]; then continue; fi
   if [[ "${path}" -ef "${target}" ]]; then continue; fi
   owned=false
   if [[ "${formula}" = privateheaderkit ]] && [[ -L "${path}" ]]
@@ -211,6 +209,8 @@ do
       *) ;;
     esac
   fi
+  # The keg does not use a retired name, so only a recognized standalone server is retired there.
+  if ! "${owned}" && [[ -z "${target}" ]]; then continue; fi
   "${owned}" || fail "Unrecognized standalone entry left unchanged: ${path}. Homebrew is installed at ${opt}."
   paths+=("${path}")
   links+=("${target}")
@@ -294,6 +294,6 @@ echo "Standalone entry points were saved in: ${backup}"
 # Bash 3.2 treats an empty array expansion as unset under set -u.
 for ((i = 0; i < ${#retired[@]}; i++))
 do
-  echo "${bindir}/${retired[i]} was renamed; start the server with xcode-mcp-server."
+  echo "${bindir}/${retired[i]} was renamed; start the server with ${opt}/bin/xcode-mcp-server."
 done
 echo 'Legacy payloads and generated data were retained. Restart running tools to use the new installation.'
