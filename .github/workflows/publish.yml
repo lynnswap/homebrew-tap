@@ -211,12 +211,17 @@ jobs:
           prefix="$(brew --prefix "$formula")"
           APPLE_TEAM_ID=58KPFKMJJW python3 \
             "$RUNNER_TEMP/verify-signature.py" verify-install --prefix "$prefix"
-          test "$("$prefix/bin/xcode-mcp-proxy-server" --version)" = "v$version"
+          server=xcode-mcp-server
+          # Bottles through v0.27.x install the server as xcode-mcp-proxy-server.
+          if [[ ! -e "$prefix/bin/$server" ]]; then
+            server=xcode-mcp-proxy-server
+          fi
+          test "$("$prefix/bin/$server" --version)" = "v$version"
           if [[ -e "$prefix/bin/xcode-mcp-proxy" ]]; then
             test "$("$prefix/bin/xcode-mcp-proxy" --version)" = "v$version"
           fi
-          test "$("$prefix/bin/xcode-mcp-proxy-server" --host 127.0.0.1 --port 0 --dry-run)" = \
-            'xcode-mcp-proxy-server --listen 127.0.0.1:0'
+          test "$("$prefix/bin/$server" --host 127.0.0.1 --port 0 --dry-run)" = \
+            "$server --listen 127.0.0.1:0"
           if [[ "$RUN_NATIVE_SMOKE" == true ]]; then
             brew test "$formula"
             "$(brew --prefix python@3.14)/bin/python3.14" \

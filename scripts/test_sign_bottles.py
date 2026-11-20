@@ -97,10 +97,10 @@ class BottleSigningTests(unittest.TestCase):
             'CFBundleExecutable': 'xcode-mcp-native-host',
         }))
         for path in [contents / 'MacOS/xcode-mcp-native-host',
-                     self.prefix / 'libexec/xcode-mcp-proxy-server']:
+                     self.prefix / 'libexec/xcode-mcp-server']:
             path.write_bytes(bytes.fromhex('cffaedfe') + b'executable fixture')
         (self.prefix / 'bin').mkdir()
-        (self.prefix / 'bin/xcode-mcp-proxy-server').symlink_to('../libexec/xcode-mcp-proxy-server')
+        (self.prefix / 'bin/xcode-mcp-server').symlink_to('../libexec/xcode-mcp-server')
         self.archive = self.source / 'xcode-mcpkit--1.2.3.arm64_tahoe.bottle.tar.gz'
         self.metadata = self.source / 'xcode-mcpkit--1.2.3.arm64_tahoe.bottle.json'
         self.pack()
@@ -164,9 +164,9 @@ class BottleSigningTests(unittest.TestCase):
                         signer.sign_bottle(self.source, self.root/'output', {})
                     credentials.assert_not_called()
 
-    def test_missing_host_or_proxy_server_is_rejected(self):
+    def test_missing_host_or_server_is_rejected(self):
         for path in (self.app / 'Contents/MacOS/xcode-mcp-native-host',
-                     self.prefix / 'libexec/xcode-mcp-proxy-server'):
+                     self.prefix / 'libexec/xcode-mcp-server'):
             with self.subTest(path=path.relative_to(self.prefix)):
                 content = path.read_bytes()
                 path.unlink()
@@ -176,13 +176,16 @@ class BottleSigningTests(unittest.TestCase):
                 finally:
                     path.write_bytes(content)
 
-    def test_legacy_proxy_and_nested_swift_libraries_are_included_and_extra_code_is_rejected(self):
+    def test_legacy_commands_and_nested_swift_libraries_are_included_and_extra_code_is_rejected(self):
+        legacy_server = self.prefix / 'libexec/xcode-mcp-proxy-server'
+        (self.prefix / 'libexec/xcode-mcp-server').rename(legacy_server)
         legacy_proxy = self.prefix / 'libexec/xcode-mcp-proxy'
         legacy_proxy.write_bytes(bytes.fromhex('cffaedfe') + b'executable fixture')
         library = self.app / 'Contents/Frameworks/libswift_Concurrency.dylib'
         library.parent.mkdir()
         library.write_bytes(bytes.fromhex('cffaedfe'))
         _, _, code = signer.payload_code(self.prefix)
+        self.assertIn(legacy_server, code)
         self.assertIn(legacy_proxy, code)
         self.assertIn(library, code)
         extra = self.prefix / 'share/unexpected-tool'
